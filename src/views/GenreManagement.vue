@@ -300,12 +300,14 @@ const loadDefaultGenres = () => {
   return defaultGenres
 }
 
+import { storageService } from '@/services/storageService'
+
 // 加载类型数据
-const loadGenres = () => {
+const loadGenres = async () => {
   try {
-    const saved = localStorage.getItem('novelGenres')
+    const saved = await storageService.getItem('novelGenres')
     if (saved) {
-      const parsed = JSON.parse(saved)
+      const parsed = saved // No need to parse, service does it
       // 确保包含默认类型
       const defaultGenres = loadDefaultGenres()
       const savedCodes = parsed.map(g => g.code)
@@ -314,7 +316,7 @@ const loadGenres = () => {
     } else {
       // 首次加载，使用默认类型
       genres.value = loadDefaultGenres()
-      saveGenres()
+      await saveGenres()
     }
   } catch (error) {
     console.error('加载类型数据失败:', error)
@@ -323,10 +325,23 @@ const loadGenres = () => {
 }
 
 // 保存类型数据
-const saveGenres = () => {
+const saveGenres = async () => {
   try {
-    localStorage.setItem('novelGenres', JSON.stringify(genres.value))
-    console.log('类型数据已保存:', genres.value)
+    // 创建纯对象数组副本，避免Vue响应式代理问题
+    const genresData = genres.value.map(genre => ({
+      id: genre.id,
+      code: genre.code,
+      name: genre.name,
+      description: genre.description,
+      tags: Array.isArray(genre.tags) ? [...genre.tags] : [],
+      prompt: genre.prompt || '',
+      usageCount: genre.usageCount || 0,
+      createdAt: genre.createdAt,
+      updatedAt: genre.updatedAt
+    }))
+    
+    await storageService.setItem('novelGenres', genresData)
+    console.log('类型数据已保存:', genresData)
   } catch (error) {
     console.error('保存类型数据失败:', error)
     ElMessage.error('保存数据失败')
@@ -468,8 +483,8 @@ const formatDate = (date) => {
 }
 
 // 生命周期
-onMounted(() => {
-  loadGenres()
+onMounted(async () => {
+  await loadGenres()
 })
 </script>
 

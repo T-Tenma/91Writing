@@ -182,6 +182,7 @@ import ApiConfig from '@/components/ApiConfig.vue'
 import AnnouncementDialog from '@/components/AnnouncementDialog.vue'
 import { getLatestAnnouncement } from '@/config/announcements.js'
 import { ElMessage } from 'element-plus'
+import { storageService } from '@/services/storageService'
 
 const router = useRouter()
 const route = useRoute()
@@ -234,19 +235,13 @@ const officialModels = computed(() => [
 ])
 
 // 自定义模型列表（从API配置中读取）
+const customModelsData = ref([])
 const customModels = computed(() => {
-  // 依赖于 forceUpdate 来强制重新计算
-  forceUpdate.value
-  
-  const models = []
-  
   try {
-    // 从ApiConfig组件的配置中读取自定义模型
-    const savedCustomModels = localStorage.getItem('customModels')
-    if (savedCustomModels) {
-      const parsed = JSON.parse(savedCustomModels)
-      models.push(...parsed)
-    }
+    // 依赖于 forceUpdate 来强制重新计算
+    forceUpdate.value
+    
+    const models = [...customModelsData.value]
     
     // 添加一些默认的自定义模型选项
     const defaultCustomModels = [
@@ -294,6 +289,20 @@ const customModels = computed(() => {
   }
 })
 
+// 加载自定义模型数据
+const loadCustomModels = async () => {
+  try {
+    const savedCustomModels = await storageService.getItem('customModels')
+    if (savedCustomModels) {
+      // storageService现在返回解析后的对象，不需要再次JSON.parse
+      const parsed = typeof savedCustomModels === 'object' ? savedCustomModels : JSON.parse(savedCustomModels)
+      customModelsData.value = parsed
+    }
+  } catch (error) {
+    console.error('加载自定义模型失败:', error)
+  }
+}
+
 const pageTitle = computed(() => {
   const titleMap = {
     '/': '首页',
@@ -312,11 +321,11 @@ const pageTitle = computed(() => {
 })
 
 // 获取当前配置类型的函数
-const getCurrentConfigType = () => {
+const getCurrentConfigType = async () => {
   try {
-    // 从localStorage获取配置类型
-    const savedConfigType = localStorage.getItem('apiConfigType')
-    console.log('从localStorage获取的配置类型:', savedConfigType) // 调试日志
+    // 从IndexedDB获取配置类型
+    const savedConfigType = await storageService.getItem('apiConfigType')
+    console.log('从IndexedDB获取的配置类型:', savedConfigType) // 调试日志
     
     // 如果没有保存的配置类型，尝试通过API地址判断
     if (!savedConfigType && isApiConfigured.value && currentApiConfig.value) {
@@ -363,84 +372,97 @@ const handleAnnouncementClose = () => {
 }
 
 // 模型相关功能
-const handleModelChange = (modelId) => {
+const handleModelChange = async (modelId) => {
+  if (!modelId) {
+    ElMessage.warning('请选择有效的模型')
+    return
+  }
+  
   try {
-    console.log('切换模型:', modelId) // 调试日志
+    console.log('切换模型:', modelId)
+    
+    // 防止重复切换
+    if (currentModel.value === modelId) {
+      console.log('模型未变化，跳过切换')
+      return
+    }
     
     // 判断选择的是官方模型还是自定义模型
     const isOfficialModel = officialModels.value.find(m => m.id === modelId)
     const isCustomModel = customModels.value.find(m => m.id === modelId)
     
+    if (!isOfficialModel && !isCustomModel) {
+      ElMessage.error('未知的模型类型')
+      return
+    }
+    
     let newConfig = {}
     let newConfigType = ''
     
     if (isOfficialModel) {
-      console.log('选择了官方模型，切换到官方配置') // 调试日志
-      // 选择了官方模型，切换到官方配置
       newConfigType = 'official'
       
       // 加载官方配置的基础参数
-      const savedOfficialConfig = localStorage.getItem('officialApiConfig')
+      const savedOfficialConfig = await storageService.getItem('officialApiConfig')
       if (savedOfficialConfig) {
-        newConfig = JSON.parse(savedOfficialConfig)
+        newConfig = typeof savedOfficialConfig === 'string' 
+          ? JSON.parse(savedOfficialConfig) 
+          : savedOfficialConfig
       } else {
-        // 如果没有保存的官方配置，使用默认值
+        // 使用默认官方配置
         newConfig = {
           baseURL: 'https://ai.91hub.vip/v1',
           maxTokens: 2000000,
           unlimitedTokens: false,
           temperature: 0.7,
-          apiKey: '' // 需要用户配置
+          apiKey: ''
         }
       }
+      
+      // 强制保持官方API地址
+      newConfig.baseURL = 'https://ai.91hub.vip/v1'
       newConfig.selectedModel = modelId
       
-      // 保存配置类型
-      localStorage.setItem('apiConfigType', 'official')
-      // 保存官方配置
-      localStorage.setItem('officialApiConfig', JSON.stringify(newConfig))
+      // 保存配置
+      await storageService.setItem('apiConfigType', 'official')
+      await storageService.setItem('officialApiConfig', newConfig)
       
     } else if (isCustomModel) {
-      console.log('选择了自定义模型，切换到自定义配置') // 调试日志
-      // 选择了自定义模型，切换到自定义配置
       newConfigType = 'custom'
       
       // 加载自定义配置的基础参数
-      const savedCustomConfig = localStorage.getItem('customApiConfig')
+      const savedCustomConfig = await storageService.getItem('customApiConfig')
       if (savedCustomConfig) {
-        newConfig = JSON.parse(savedCustomConfig)
+        newConfig = typeof savedCustomConfig === 'string' 
+          ? JSON.parse(savedCustomConfig) 
+          : savedCustomConfig
       } else {
-        // 如果没有保存的自定义配置，使用默认值
+        // 使用默认自定义配置
         newConfig = {
           baseURL: 'https://api.openai.com/v1',
           maxTokens: 2000000,
           unlimitedTokens: false,
           temperature: 0.7,
-          apiKey: '' // 需要用户配置
+          apiKey: ''
         }
       }
+      
       newConfig.selectedModel = modelId
       
-      // 保存配置类型
-      localStorage.setItem('apiConfigType', 'custom')
-      // 保存自定义配置
-      localStorage.setItem('customApiConfig', JSON.stringify(newConfig))
-      
-    } else {
-      console.error('未知的模型类型:', modelId)
-      ElMessage.error('未知的模型类型')
-      return
+      // 保存配置
+      await storageService.setItem('apiConfigType', 'custom')
+      await storageService.setItem('customApiConfig', newConfig)
     }
     
     // 更新当前配置类型
     configType.value = newConfigType
     
-    // 更新store中的API配置，使用新的分离配置系统
-    novelStore.updateApiConfig(newConfig, newConfigType)
-    novelStore.switchConfigType(newConfigType)
+    // 更新store中的API配置
+    await novelStore.updateApiConfig(newConfig, newConfigType)
+    await novelStore.switchConfigType(newConfigType)
     
-    // 强制更新界面
-    forceUpdate.value++
+    // 更新当前模型显示
+    currentModel.value = modelId
     
     const modelName = getModelDisplayName(modelId)
     const configTypeName = newConfigType === 'official' ? '官方配置' : '自定义配置'
@@ -450,19 +472,27 @@ const handleModelChange = (modelId) => {
     
     if (needsApiKey) {
       ElMessage.warning(`已切换到${configTypeName}: ${modelName}，请先配置API密钥`)
-      // 可以考虑自动打开API配置对话框
+      // 延迟打开配置对话框，避免界面冲突
       setTimeout(() => {
         showApiConfig.value = true
-      }, 1000)
+      }, 500)
     } else {
       ElMessage.success(`已切换到${configTypeName}: ${modelName}`)
     }
     
-    console.log('配置切换完成:', { configType: newConfigType, config: newConfig, needsApiKey }) // 调试日志
+    console.log('配置切换完成:', { 
+      configType: newConfigType, 
+      modelId, 
+      needsApiKey,
+      hasApiKey: !!newConfig.apiKey 
+    })
     
   } catch (error) {
     console.error('切换模型失败:', error)
     ElMessage.error('切换模型失败: ' + error.message)
+    
+    // 恢复之前的模型选择
+    await initializeModelSelector()
   }
 }
 
@@ -480,10 +510,10 @@ const getModelDisplayName = (modelId) => {
 }
 
 // 初始化模型选择器
-const initializeModelSelector = () => {
+const initializeModelSelector = async () => {
   try {
     // 获取配置类型
-    const savedConfigType = localStorage.getItem('apiConfigType') || 'official'
+    const savedConfigType = await storageService.getItem('apiConfigType') || 'official'
     configType.value = savedConfigType
     
     // 获取当前选中的模型
@@ -506,8 +536,8 @@ watch(() => route.path, (newPath) => {
 }, { immediate: true })
 
 // 监听API配置变化，更新模型选择器
-watch(() => [isApiConfigured.value, currentApiConfig.value], () => {
-  initializeModelSelector()
+watch(() => [isApiConfigured.value, currentApiConfig.value], async () => {
+  await initializeModelSelector()
 }, { immediate: true })
 
 // 监听localStorage变化的函数
@@ -515,24 +545,25 @@ const handleStorageChange = (event) => {
   if (event.key === 'apiConfigType' || event.key === 'officialApiConfig' || event.key === 'customApiConfig' || event.key === 'customModels') {
     console.log('检测到localStorage配置变化:', event.key, event.newValue) // 调试日志
     // 延迟执行，确保数据已更新
-    setTimeout(() => {
-      initializeModelSelector()
+    setTimeout(async () => {
+      await initializeModelSelector()
     }, 100)
   }
 }
 
 // 组件挂载时初始化
-onMounted(() => {
-  initializeModelSelector()
+onMounted(async () => {
+  await loadCustomModels()
+  await initializeModelSelector()
   // 监听localStorage变化
   window.addEventListener('storage', handleStorageChange)
   
   // 手动触发一次检查（处理同页面内的变化）
-  const checkConfigChange = () => {
-    const currentType = localStorage.getItem('apiConfigType')
+  const checkConfigChange = async () => {
+    const currentType = await storageService.getItem('apiConfigType')
     if (currentType !== configType.value) {
       console.log('检测到配置类型变化:', configType.value, '->', currentType)
-      initializeModelSelector()
+      await initializeModelSelector()
     }
   }
   

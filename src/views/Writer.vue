@@ -2135,6 +2135,7 @@ import '@wangeditor/editor/dist/css/style.css'
 import apiService from '../services/api.js'
 import billingService from '../services/billing.js'
 import { useNovelStore } from '../stores/novel.js'
+import { storageService } from '@/services/storageService'
 
 const route = useRoute()
 const router = useRouter()
@@ -2176,7 +2177,6 @@ const currentChapter = ref(null)
 const content = ref('')
 const hasUnsavedChanges = ref(false)
 const isSaving = ref(false)
-const hasUnsavedChanges = ref(false)
 const showChapterDialog = ref(false)
 const editingChapter = ref(null)
 const editorRef = shallowRef()
@@ -2464,12 +2464,12 @@ const loadChapter = (chapter) => {
   content.value = chapter.content || ''
 }
 
-const saveCurrentChapter = () => {
+const saveCurrentChapter = async () => {
   if (currentChapter.value) {
     currentChapter.value.content = content.value
     currentChapter.value.wordCount = contentWordCount.value
     currentChapter.value.updatedAt = new Date()
-    saveNovelData()
+    await saveNovelData()
   }
 }
 
@@ -2968,11 +2968,13 @@ watch(streamingContent, () => {
 })
 
 // 加载提示词数据
-const loadPrompts = () => {
-  const savedPrompts = localStorage.getItem('prompts')
+const loadPrompts = async () => {
+  const savedPrompts = await storageService.getItem('prompts')
   if (savedPrompts) {
     try {
-      availablePrompts.value = JSON.parse(savedPrompts)
+      // storageService现在返回解析后的对象，不需要再次JSON.parse
+      const promptsData = Array.isArray(savedPrompts) ? savedPrompts : (typeof savedPrompts === 'string' ? JSON.parse(savedPrompts) : [])
+      availablePrompts.value = promptsData
     } catch (error) {
       console.error('加载提示词失败:', error)
       availablePrompts.value = getDefaultPrompts()
@@ -3223,9 +3225,9 @@ const getDefaultPrompts = () => {
 }
 
 // 保存提示词到本地存储
-const savePrompts = () => {
+const savePrompts = async () => {
   try {
-    localStorage.setItem('prompts', JSON.stringify(availablePrompts.value))
+    await storageService.setItem('prompts', JSON.stringify(availablePrompts.value))
   } catch (error) {
     console.error('保存提示词失败:', error)
   }
@@ -5476,8 +5478,10 @@ const resetOptimizePromptDialog = () => {
   optimizeFinalPrompt.value = ''
 }
 
-const getOptimizePrompts = () => {
-  const prompts = JSON.parse(localStorage.getItem('prompts') || '[]')
+const getOptimizePrompts = async () => {
+  const promptsData = await storageService.getItem('prompts')
+  // storageService现在返回解析后的对象，不需要再次JSON.parse
+  const prompts = Array.isArray(promptsData) ? promptsData : (typeof promptsData === 'string' ? JSON.parse(promptsData || '[]') : [])
   return prompts.filter(p => p.category === 'polish' || p.category === 'optimize')
 }
 
@@ -7607,7 +7611,7 @@ const autoSave = () => {
 }
 
 // 数据保存方法
-const saveNovelData = () => {
+const saveNovelData = async () => {
   if (!currentNovel.value) return
   
   const totalWordCount = chapters.value.reduce((sum, ch) => sum + (ch.wordCount || 0), 0)
@@ -7626,22 +7630,26 @@ const saveNovelData = () => {
     totalWords: totalWordCount
   }
   
-  const novels = JSON.parse(localStorage.getItem('novels') || '[]')
+  const novelsData = await storageService.getItem('novels')
+  // storageService现在返回解析后的对象，不需要再次JSON.parse
+  const novels = Array.isArray(novelsData) ? novelsData : (typeof novelsData === 'string' ? JSON.parse(novelsData || '[]') : [])
   const index = novels.findIndex(n => n.id === currentNovel.value.id)
   if (index > -1) {
     novels[index] = novelData
   } else {
     novels.push(novelData)
   }
-  localStorage.setItem('novels', JSON.stringify(novels))
+  await storageService.setItem('novels', JSON.stringify(novels))
 }
 
 // 初始化
-const initNovel = () => {
+const initNovel = async () => {
   const novelId = parseInt(route.query.novelId)
   if (novelId) {
-    // 从localStorage加载小说数据
-    const novels = JSON.parse(localStorage.getItem('novels') || '[]')
+    // 从IndexedDB加载小说数据
+    const novelsData = await storageService.getItem('novels')
+    // storageService现在返回解析后的对象，不需要再次JSON.parse
+    const novels = Array.isArray(novelsData) ? novelsData : (typeof novelsData === 'string' ? JSON.parse(novelsData || '[]') : [])
     const novel = novels.find(n => n.id === novelId)
     
     if (novel) {
@@ -7698,9 +7706,9 @@ const initNovel = () => {
 }
 
 // 生命周期
-onMounted(() => {
-  initNovel()
-  loadPrompts()
+onMounted(async () => {
+  await initNovel()
+  await loadPrompts()
 })
 
 onUnmounted(() => {

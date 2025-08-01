@@ -590,6 +590,7 @@ import {
   Close, DocumentCopy, Loading, Check, MagicStick, Refresh, View, Edit
 } from '@element-plus/icons-vue'
 import { useNovelStore } from '@/stores/novel'
+import { storageService } from '@/services/storageService'
 
 const novelStore = useNovelStore()
 
@@ -661,11 +662,12 @@ const analysisSteps = [
 const analysisTemplates = ref([])
 
 // 从提示词库加载拆书模板
-const loadAnalysisTemplates = () => {
-  const savedPrompts = localStorage.getItem('prompts')
+const loadAnalysisTemplates = async () => {
+  const savedPrompts = await storageService.getItem('prompts')
   if (savedPrompts) {
     try {
-      const allPrompts = JSON.parse(savedPrompts)
+      // storageService现在返回解析后的对象，不需要再次JSON.parse
+      const allPrompts = Array.isArray(savedPrompts) ? savedPrompts : (typeof savedPrompts === 'string' ? JSON.parse(savedPrompts) : [])
       analysisTemplates.value = allPrompts
         .filter(prompt => prompt.category === 'book-analysis')
         .map(prompt => ({
@@ -1511,18 +1513,18 @@ const regenerateChapterSummary = async () => {
 }
 
 // 保存提示词模板到本地存储
-const saveSummaryPromptTemplate = () => {
+const saveSummaryPromptTemplate = async () => {
   try {
-    localStorage.setItem('chapterSummaryPromptTemplate', summaryPromptTemplate.value)
+    await storageService.setItem('chapterSummaryPromptTemplate', summaryPromptTemplate.value)
   } catch (error) {
     console.error('保存提示词模板失败:', error)
   }
 }
 
 // 从本地存储加载提示词模板
-const loadSummaryPromptTemplate = () => {
+const loadSummaryPromptTemplate = async () => {
   try {
-    const saved = localStorage.getItem('chapterSummaryPromptTemplate')
+    const saved = await storageService.getItem('chapterSummaryPromptTemplate')
     if (saved) {
       summaryPromptTemplate.value = saved
     }
@@ -1579,9 +1581,9 @@ watch(summaryPromptTemplate, () => {
 })
 
 // 组件挂载时加载模板
-onMounted(() => {
-  loadAnalysisTemplates()
-  loadSummaryPromptTemplate()
+onMounted(async () => {
+  await loadAnalysisTemplates()
+  await loadSummaryPromptTemplate()
 })
 </script>
 

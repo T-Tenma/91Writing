@@ -13,8 +13,8 @@
       <!-- 配置类型选择 -->
       <div class="config-type-selector">
         <el-radio-group v-model="configType" @change="onConfigTypeChange">
-          <el-radio-button label="official">🏢 91写作官方API</el-radio-button>
-          <el-radio-button label="custom">⚙️ 自定义API配置</el-radio-button>
+          <el-radio-button value="official">🏢 91写作官方API</el-radio-button>
+          <el-radio-button value="custom">⚙️ 自定义API配置</el-radio-button>
         </el-radio-group>
       </div>
 
@@ -321,6 +321,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useNovelStore } from '../stores/novel.js'
 import apiService from '../services/api.js'
+import { storageService } from '../services/storageService'
 
 const store = useNovelStore()
 const validating = ref(false)
@@ -359,7 +360,7 @@ const officialModels = [
   {
     id: 'claude-opus-4-20250514',
     name: 'Claude Opus 4',
-    description: '最强性能Claude模型，顶级创作能力',
+    description: '最强性能Claude��型，顶级创作能力',
     price: '￥0.5/次'
   },
   {
@@ -417,18 +418,34 @@ const formatTemperature = (value) => {
   return '创新'
 }
 
-// 打开购买链接
+// 打开购买��接
 const openPurchaseLink = () => {
   window.open('https://item.taobao.com/item.htm?ft=t&id=938261705242', '_blank')
 }
 
 // 配置类型切换
-const onConfigTypeChange = (type) => {
-  configType.value = type
-  // 根据配置类型更新store中的配置
-  const currentForm = type === 'official' ? officialForm : customForm
-  store.updateApiConfig(currentForm, type)
-  store.switchConfigType(type)
+const onConfigTypeChange = async (type) => {
+  try {
+    configType.value = type
+    
+    // 创建纯对象副本，避免reactive代理问题
+    const currentForm = type === 'official' ? officialForm : customForm
+    const configData = {
+      apiKey: currentForm.apiKey,
+      baseURL: currentForm.baseURL,
+      selectedModel: currentForm.selectedModel,
+      maxTokens: currentForm.maxTokens,
+      unlimitedTokens: currentForm.unlimitedTokens,
+      temperature: currentForm.temperature
+    }
+    
+    // 根据配置类型更新store中的配置
+    store.updateApiConfig(configData, type)
+    await store.switchConfigType(type)
+  } catch (error) {
+    console.error('切换配置类型失败:', error)
+    ElMessage.error('切换配置类型失败')
+  }
 }
 
 // 官方配置相关方法
@@ -451,18 +468,29 @@ const saveOfficialConfig = async () => {
   
   validating.value = true
   try {
+    // 创建纯对象副本，避免reactive代理问题
+    const configData = {
+      apiKey: officialForm.apiKey,
+      baseURL: officialForm.baseURL,
+      selectedModel: officialForm.selectedModel,
+      maxTokens: officialForm.maxTokens,
+      unlimitedTokens: officialForm.unlimitedTokens,
+      temperature: officialForm.temperature
+    }
+    
     // 使用新的store API，指定配置类型为官方配置
-    store.updateApiConfig(officialForm, 'official')
-    store.switchConfigType('official')
+    store.updateApiConfig(configData, 'official')
+    await store.switchConfigType('official')
     const isValid = await store.validateApiKey()
     
     if (isValid) {
       ElMessage.success('官方配置保存成功')
-      localStorage.setItem('officialApiConfig', JSON.stringify(officialForm))
+      await storageService.setItem('officialApiConfig', configData)
     } else {
       ElMessage.error('API密钥验证失败，请检查配置')
     }
   } catch (error) {
+    console.error('保存官方配置失败:', error)
     ElMessage.error('配置保存失败：' + error.message)
   } finally {
     validating.value = false
@@ -480,9 +508,19 @@ const testOfficialConnection = async () => {
   
   validating.value = true
   try {
+    // 创建纯对象副本，避免reactive代理问题
+    const configData = {
+      apiKey: officialForm.apiKey,
+      baseURL: officialForm.baseURL,
+      selectedModel: officialForm.selectedModel,
+      maxTokens: officialForm.maxTokens,
+      unlimitedTokens: officialForm.unlimitedTokens,
+      temperature: officialForm.temperature
+    }
+    
     // 使用新的store API进行测试
-    store.updateApiConfig(officialForm, 'official')
-    store.switchConfigType('official')
+    store.updateApiConfig(configData, 'official')
+    await store.switchConfigType('official')
     const isValid = await store.validateApiKey()
     
     if (isValid) {
@@ -491,6 +529,7 @@ const testOfficialConnection = async () => {
       ElMessage.error('连接测试失败')
     }
   } catch (error) {
+    console.error('测试官方配置失败:', error)
     ElMessage.error('连接测试失败：' + error.message)
   } finally {
     validating.value = false
@@ -506,28 +545,64 @@ const handleCustomUnlimitedTokensChange = () => {
   }
 }
 
-const addCustomModel = () => {
+const addCustomModel = async () => {
   const modelName = customModelInput.value.trim()
-  if (!modelName) return
   
-  const exists = availableModels.value.some(model => model.id === modelName)
+  // 输入验证
+  if (!modelName) {
+    ElMessage.warning('请输入模型名称')
+    return
+  }
+  
+  // 长度验证
+  if (modelName.length > 100) {
+    ElMessage.warning('模型名称不能超过100个字符')
+    return
+  }
+  
+  // 字符验证（允许字母、数字、连字符、下划线、点）
+  const validPattern = /^[a-zA-Z0-9\-_.]+$/
+  if (!validPattern.test(modelName)) {
+    ElMessage.warning('模型名称只能包含字母、数字、连字符、下划线和点')
+    return
+  }
+  
+  // 检查是否已存在（不区分大小写）
+  const exists = availableModels.value.some(model => 
+    model.id.toLowerCase() === modelName.toLowerCase()
+  )
   if (exists) {
     ElMessage.warning('该模型已存在')
     return
   }
   
-  customModels.value.push({
-    id: modelName,
-    name: modelName,
-    description: '自定义模型'
-  })
+  // 检查是否与官方模型重名
+  const isOfficialModel = officialModels.value.some(model => 
+    model.id.toLowerCase() === modelName.toLowerCase()
+  )
+  if (isOfficialModel) {
+    ElMessage.warning('不能添加与官方模型同名的自定义模型')
+    return
+  }
   
-  customModelInput.value = ''
-  ElMessage.success('自定义模型添加成功')
-  saveCustomModels()
+  try {
+    customModels.value.push({
+      id: modelName,
+      name: modelName,
+      description: '自定义模型',
+      createdAt: new Date().toISOString()
+    })
+    
+    customModelInput.value = ''
+    ElMessage.success('自定义模型添加成功')
+    await saveCustomModels()
+  } catch (error) {
+    console.error('添加自定义模型失败:', error)
+    ElMessage.error('添加模型失败，请重试')
+  }
 }
 
-const removeCustomModel = (modelId) => {
+const removeCustomModel = async (modelId) => {
   const index = customModels.value.findIndex(model => model.id === modelId)
   if (index > -1) {
     customModels.value.splice(index, 1)
@@ -537,19 +612,32 @@ const removeCustomModel = (modelId) => {
     }
     
     ElMessage.success('自定义模型删除成功')
-    saveCustomModels()
+    await saveCustomModels()
   }
 }
 
-const saveCustomModels = () => {
-  localStorage.setItem('customModels', JSON.stringify(customModels.value))
+const saveCustomModels = async () => {
+  try {
+    // 创建纯对象数组副本，避免reactive代理问题
+    const modelsData = customModels.value.map(model => ({
+      id: model.id,
+      name: model.name,
+      description: model.description,
+      createdAt: model.createdAt
+    }))
+    
+    await storageService.setItem('customModels', modelsData)
+  } catch (error) {
+    console.error('保存自定义模型失败:', error)
+    ElMessage.error('保存自定义模型失败')
+  }
 }
 
-const loadCustomModels = () => {
-  const saved = localStorage.getItem('customModels')
+const loadCustomModels = async () => {
+  const saved = await storageService.getItem('customModels')
   if (saved) {
     try {
-      customModels.value = JSON.parse(saved)
+      customModels.value = saved
     } catch (error) {
       console.error('加载自定义模型失败:', error)
     }
@@ -564,18 +652,29 @@ const saveCustomConfig = async () => {
   
   validating.value = true
   try {
+    // 创建纯对象副本，避免reactive代理问题
+    const configData = {
+      apiKey: customForm.apiKey,
+      baseURL: customForm.baseURL,
+      selectedModel: customForm.selectedModel,
+      maxTokens: customForm.maxTokens,
+      unlimitedTokens: customForm.unlimitedTokens,
+      temperature: customForm.temperature
+    }
+    
     // 使用新的store API，指定配置类型为自定义配置
-    store.updateApiConfig(customForm, 'custom')
-    store.switchConfigType('custom')
+    store.updateApiConfig(configData, 'custom')
+    await store.switchConfigType('custom')
     const isValid = await store.validateApiKey()
     
     if (isValid) {
       ElMessage.success('自定义配置保存成功')
-      localStorage.setItem('customApiConfig', JSON.stringify(customForm))
+      await storageService.setItem('customApiConfig', configData)
     } else {
       ElMessage.error('API密钥验证失败，请检查配置')
     }
   } catch (error) {
+    console.error('保存自定义配置失败:', error)
     ElMessage.error('配置保存失败：' + error.message)
   } finally {
     validating.value = false
@@ -590,9 +689,19 @@ const testCustomConnection = async () => {
   
   validating.value = true
   try {
+    // 创建纯对象副本，避免reactive代理问题
+    const configData = {
+      apiKey: customForm.apiKey,
+      baseURL: customForm.baseURL,
+      selectedModel: customForm.selectedModel,
+      maxTokens: customForm.maxTokens,
+      unlimitedTokens: customForm.unlimitedTokens,
+      temperature: customForm.temperature
+    }
+    
     // 使用新的store API进行测试
-    store.updateApiConfig(customForm, 'custom')
-    store.switchConfigType('custom')
+    store.updateApiConfig(configData, 'custom')
+    await store.switchConfigType('custom')
     const isValid = await store.validateApiKey()
     
     if (isValid) {
@@ -601,13 +710,14 @@ const testCustomConnection = async () => {
       ElMessage.error('连接测试失败')
     }
   } catch (error) {
+    console.error('测试自定义配置失败:', error)
     ElMessage.error('连接测试失败：' + error.message)
   } finally {
     validating.value = false
   }
 }
 
-const resetCustomConfig = () => {
+const resetCustomConfig = async () => {
   Object.assign(customForm, {
     apiKey: '',
     baseURL: 'https://api.openai.com/v1',
@@ -616,21 +726,21 @@ const resetCustomConfig = () => {
     unlimitedTokens: false,
     temperature: 0.7
   })
-  localStorage.removeItem('customApiConfig')
+  await storageService.removeItem('customApiConfig')
   ElMessage.success('自定义配置已重置')
 }
 
 // 加载保存的配置
-const loadSavedConfig = () => {
+const loadSavedConfig = async () => {
   // 加载配置类型
-  const savedType = localStorage.getItem('apiConfigType') || 'official'
+  const savedType = await storageService.getItem('apiConfigType') || 'official'
   configType.value = savedType
   
   // 加载官方配置 - 只允许加载API密钥，其他参数保持默认值
-  const savedOfficial = localStorage.getItem('officialApiConfig')
+  const savedOfficial = await storageService.getItem('officialApiConfig')
   if (savedOfficial) {
     try {
-      const config = JSON.parse(savedOfficial)
+      const config = savedOfficial
       // 官方配置只允许覆盖API密钥，其他参数（特别是baseURL）保持默认值
       if (config.apiKey) {
         officialForm.apiKey = config.apiKey
@@ -650,7 +760,7 @@ const loadSavedConfig = () => {
       if (config.temperature !== undefined) {
         officialForm.temperature = config.temperature
       }
-      // 强制保持官方API地址，不允许被覆盖
+      // 强制保存官方API地址，不允许被覆盖
       officialForm.baseURL = 'https://ai.91hub.vip/v1'
     } catch (error) {
       console.error('加载官方配置失败:', error)
@@ -658,10 +768,10 @@ const loadSavedConfig = () => {
   }
   
   // 加载自定义配置 - 完全独立的数据源
-  const savedCustom = localStorage.getItem('customApiConfig')
+  const savedCustom = await storageService.getItem('customApiConfig')
   if (savedCustom) {
     try {
-      const config = JSON.parse(savedCustom)
+      const config = savedCustom
       if (config.unlimitedTokens === undefined) {
         config.unlimitedTokens = config.maxTokens === null
       }
@@ -677,11 +787,12 @@ const loadSavedConfig = () => {
   store.switchConfigType(configType.value)
 }
 
-onMounted(() => {
-  loadCustomModels()
-  loadSavedConfig()
+onMounted(async () => {
+  await loadCustomModels()
+  await loadSavedConfig()
 })
 </script>
+
 
 <style scoped>
 .api-config {

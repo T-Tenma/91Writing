@@ -424,20 +424,30 @@ const importChapters = () => {
   input.click()
 }
 
-const saveChapters = () => {
-  localStorage.setItem('novel_chapters', JSON.stringify(chapters.value))
+import { storageService } from '@/services/storageService'
+
+// ... (other code)
+
+const saveChapters = async () => {
+  await storageService.setItem('novel_chapters', chapters.value)
 }
 
-const loadChapters = () => {
+const loadChapters = async () => {
   try {
-    const saved = localStorage.getItem('novel_chapters')
+    const saved = await storageService.getItem('novel_chapters')
     if (saved) {
-      chapters.value = JSON.parse(saved)
+      chapters.value = saved
     }
   } catch (error) {
     console.error('加载章节失败:', error)
   }
 }
+
+// ... (other code)
+
+onMounted(async () => {
+  await loadChapters()
+})
 
 const formatDate = (date) => {
   if (!date) return ''
