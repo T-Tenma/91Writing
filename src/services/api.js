@@ -1,49 +1,62 @@
 import apiConfig from '../config/api.json'
 import billingService from './billing.js'
 import { ElMessage } from 'element-plus'
+import { storageService } from './storageService'
 
 class APIService {
   constructor() {
     this.config = { ...apiConfig.openai }
     this.proxyConfig = apiConfig.proxy
-    // 尝试从localStorage加载用户配置
+    // 异步加载用户配置
     this.loadUserConfig()
   }
   
   // 加载用户配置
-  loadUserConfig() {
+  async loadUserConfig() {
     try {
       // 检查新的配置结构
-      const configType = localStorage.getItem('apiConfigType') || 'official'
+      const configType = await storageService.getItem('apiConfigType') || 'official'
       
       let userConfig = null
       
       if (configType === 'official') {
         // 加载官方配置
-        const saved = localStorage.getItem('officialApiConfig')
+        const saved = await storageService.getItem('officialApiConfig')
         if (saved) {
-          userConfig = JSON.parse(saved)
+          userConfig = saved
         }
       } else {
         // 加载自定义配置
-        const saved = localStorage.getItem('customApiConfig')
+        const saved = await storageService.getItem('customApiConfig')
         if (saved) {
-          userConfig = JSON.parse(saved)
+          userConfig = saved
         }
       }
       
       // 如果新配置不存在，尝试加载旧的配置（向后兼容）
       if (!userConfig) {
-        const oldSaved = localStorage.getItem('apiConfig')
+        const oldSaved = await storageService.getItem('apiConfig')
         if (oldSaved) {
-          userConfig = JSON.parse(oldSaved)
+          userConfig = oldSaved
+          
+          // 创建纯对象副本用于迁移，排除可能包含不可克隆对象的字段
+          const configToMigrate = {
+            apiKey: userConfig.apiKey || '',
+            baseURL: userConfig.baseURL || '',
+            selectedModel: userConfig.selectedModel || '',
+            defaultModel: userConfig.defaultModel || '',
+            maxTokens: userConfig.maxTokens,
+            unlimitedTokens: userConfig.unlimitedTokens,
+            temperature: typeof userConfig.temperature === 'number' ? userConfig.temperature : 0.7
+          }
+          
           // 将旧配置迁移到新结构
           if (configType === 'official') {
-            localStorage.setItem('officialApiConfig', JSON.stringify(userConfig))
+            await storageService.setItem('officialApiConfig', configToMigrate)
           } else {
-            localStorage.setItem('customApiConfig', JSON.stringify(userConfig))
+            await storageService.setItem('customApiConfig', configToMigrate)
           }
-          localStorage.setItem('apiConfigType', configType)
+          await storageService.setItem('apiConfigType', configType)
         }
       }
       
@@ -61,24 +74,38 @@ class APIService {
   }
 
   // 更新API配置
-  updateConfig(newConfig) {
+  async updateConfig(newConfig) {
     this.config = { ...this.config, ...newConfig }
-    // 保存到localStorage（根据配置类型保存到对应位置）
+    // 保存到storage（根据配置类型保存到对应位置）
     try {
-      const configType = localStorage.getItem('apiConfigType') || 'official'
+      const configType = await storageService.getItem('apiConfigType') || 'official'
+      
+      // 创建纯对象副本，只包含可序列化的基本配置，排除models等可能包含不可克隆对象的字段
+      const configToStore = {
+        apiKey: this.config.apiKey || '',
+        baseURL: this.config.baseURL || '',
+        selectedModel: this.config.selectedModel || '',
+        defaultModel: this.config.defaultModel || '',
+        maxTokens: this.config.maxTokens,
+        unlimitedTokens: this.config.unlimitedTokens,
+        temperature: typeof this.config.temperature === 'number' ? this.config.temperature : 0.7
+        // 注意：不保存models数组，因为它可能包含不可克隆的对象
+      }
       
       if (configType === 'official') {
-        localStorage.setItem('officialApiConfig', JSON.stringify(this.config))
+        await storageService.setItem('officialApiConfig', configToStore)
       } else {
-        localStorage.setItem('customApiConfig', JSON.stringify(this.config))
+        await storageService.setItem('customApiConfig', configToStore)
       }
       
       // 同时更新旧的配置键以保持兼容性
-      localStorage.setItem('apiConfig', JSON.stringify(this.config))
+      await storageService.setItem('apiConfig', configToStore)
     } catch (error) {
       console.error('保存API配置失败:', error)
     }
   }
+  // ... (rest of the file remains the same)
+  // ...
 
   // 构建请求URL
   buildURL(endpoint) {

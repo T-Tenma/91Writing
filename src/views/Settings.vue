@@ -110,6 +110,23 @@
               <el-divider />
               
               <div class="data-section">
+                <h3>🔄 数据迁移</h3>
+                <p>将数据从 localStorage 迁移到 IndexedDB，提升性能和存储容量</p>
+                <div class="data-actions">
+                  <el-button type="primary" @click="showMigrationDialog = true">
+                    <el-icon><DataAnalysis /></el-icon>
+                    开始数据迁移
+                  </el-button>
+                  <el-button @click="checkMigrationStatus">
+                    <el-icon><InfoFilled /></el-icon>
+                    检查迁移状态
+                  </el-button>
+                </div>
+              </div>
+              
+              <el-divider />
+              
+              <div class="data-section">
                 <h3>🗑️ 数据清除</h3>
                 <p class="warning-text">⚠️ 危险操作：将清除本地数据，请谨慎操作</p>
                 <div class="data-actions">
@@ -327,18 +344,27 @@
         <el-button type="primary" @click="confirmImportOptions">确定</el-button>
       </template>
     </el-dialog>
+    
+    <!-- 数据迁移对话框 -->
+    <DataMigrationDialog
+      v-model:visible="showMigrationDialog"
+      @completed="handleMigrationCompleted"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download, Upload, Document, Setting, Delete, ChatLineSquare, Collection } from '@element-plus/icons-vue'
+import { Download, Upload, Document, Setting, Delete, ChatLineSquare, Collection, DataAnalysis, InfoFilled } from '@element-plus/icons-vue'
 import ApiConfig from '@/components/ApiConfig.vue'
+import DataMigrationDialog from '@/components/DataMigrationDialog.vue'
+import { storageService } from '@/services/storageService'
 
 // 响应式数据
 const activeTab = ref('api')
 const showImportDialog = ref(false)
+const showMigrationDialog = ref(false)
 const importOptions = ref(['novels', 'prompts', 'novelGenres', 'writingGoals'])
 
 // 数据统计
@@ -357,12 +383,18 @@ const testAllConnections = () => {
 }
 
 // 计算数据统计
-const calculateDataStats = () => {
+const calculateDataStats = async () => {
   try {
-    const novels = JSON.parse(localStorage.getItem('novels') || '[]')
-    const prompts = JSON.parse(localStorage.getItem('prompts') || '[]')
-    const genres = JSON.parse(localStorage.getItem('novelGenres') || '[]')
-    const goals = JSON.parse(localStorage.getItem('writingGoals') || '[]')
+    const novelsData = await storageService.getItem('novels')
+    const promptsData = await storageService.getItem('prompts')
+    const genresData = await storageService.getItem('novelGenres')
+    const goalsData = await storageService.getItem('writingGoals')
+    
+    // storageService现在返回解析后的对象，不需要再次JSON.parse
+    const novels = Array.isArray(novelsData) ? novelsData : (typeof novelsData === 'string' ? JSON.parse(novelsData) : [])
+    const prompts = Array.isArray(promptsData) ? promptsData : (typeof promptsData === 'string' ? JSON.parse(promptsData) : [])
+    const genres = Array.isArray(genresData) ? genresData : (typeof genresData === 'string' ? JSON.parse(genresData) : [])
+    const goals = Array.isArray(goalsData) ? goalsData : (typeof goalsData === 'string' ? JSON.parse(goalsData) : [])
     
     // 计算数据大小
     const allData = JSON.stringify({
@@ -388,15 +420,22 @@ const calculateDataStats = () => {
   }
 }
 
-const exportAllData = () => {
+const exportAllData = async () => {
+  const novelsData = await storageService.getItem('novels')
+  const promptsData = await storageService.getItem('prompts')
+  const genresData = await storageService.getItem('novelGenres')
+  const goalsData = await storageService.getItem('writingGoals')
+  const apiConfigData = await storageService.getItem('api-config')
+  const tokenUsageData = await storageService.getItem('token-usage')
+  
   const data = {
-    novels: JSON.parse(localStorage.getItem('novels') || '[]'),
-    prompts: JSON.parse(localStorage.getItem('prompts') || '[]'),
-    novelGenres: JSON.parse(localStorage.getItem('novelGenres') || '[]'),
-    writingGoals: JSON.parse(localStorage.getItem('writingGoals') || '[]'),
+    novels: Array.isArray(novelsData) ? novelsData : (typeof novelsData === 'string' ? JSON.parse(novelsData || '[]') : []),
+    prompts: Array.isArray(promptsData) ? promptsData : (typeof promptsData === 'string' ? JSON.parse(promptsData || '[]') : []),
+    novelGenres: Array.isArray(genresData) ? genresData : (typeof genresData === 'string' ? JSON.parse(genresData || '[]') : []),
+    writingGoals: Array.isArray(goalsData) ? goalsData : (typeof goalsData === 'string' ? JSON.parse(goalsData || '[]') : []),
     settings: {
-      apiConfig: JSON.parse(localStorage.getItem('api-config') || '{}'),
-      tokenUsage: JSON.parse(localStorage.getItem('token-usage') || '{}')
+      apiConfig: typeof apiConfigData === 'object' ? apiConfigData : (typeof apiConfigData === 'string' ? JSON.parse(apiConfigData || '{}') : {}),
+      tokenUsage: typeof tokenUsageData === 'object' ? tokenUsageData : (typeof tokenUsageData === 'string' ? JSON.parse(tokenUsageData || '{}') : {})
     },
     exportTime: new Date().toISOString(),
     version: 'v0.7.0'
@@ -413,8 +452,10 @@ const exportAllData = () => {
   ElMessage.success('完整数据导出成功')
 }
 
-const exportNovels = () => {
-  const novels = JSON.parse(localStorage.getItem('novels') || '[]')
+const exportNovels = async () => {
+  const novelsData = await storageService.getItem('novels')
+  // storageService现在返回解析后的对象，不需要再次JSON.parse
+  const novels = Array.isArray(novelsData) ? novelsData : (typeof novelsData === 'string' ? JSON.parse(novelsData) : [])
   const data = {
     novels,
     exportTime: new Date().toISOString(),
@@ -431,8 +472,10 @@ const exportNovels = () => {
   ElMessage.success('小说数据导出成功')
 }
 
-const exportPrompts = () => {
-  const prompts = JSON.parse(localStorage.getItem('prompts') || '[]')
+const exportPrompts = async () => {
+  const promptsData = await storageService.getItem('prompts')
+  // storageService现在返回解析后的对象，不需要再次JSON.parse
+  const prompts = Array.isArray(promptsData) ? promptsData : (typeof promptsData === 'string' ? JSON.parse(promptsData) : [])
   const data = {
     prompts,
     exportTime: new Date().toISOString(),
@@ -449,8 +492,10 @@ const exportPrompts = () => {
   ElMessage.success('提示词库导出成功')
 }
 
-const exportGenres = () => {
-  const genres = JSON.parse(localStorage.getItem('novelGenres') || '[]')
+const exportGenres = async () => {
+  const genresData = await storageService.getItem('novelGenres')
+  // storageService现在返回解析后的对象，不需要再次JSON.parse
+  const genres = Array.isArray(genresData) ? genresData : (typeof genresData === 'string' ? JSON.parse(genresData) : [])
   const data = {
     novelGenres: genres,
     exportTime: new Date().toISOString(),
@@ -505,10 +550,33 @@ const confirmImportOptions = () => {
 }
 
 const beforeImport = (file) => {
+  // 文件大小检查（限制为10MB）
+  const maxSize = 10 * 1024 * 1024
+  if (file.size > maxSize) {
+    ElMessage.error('文件大小不能超过10MB')
+    return false
+  }
+  
+  // 文件类型检查
+  if (!file.name.toLowerCase().endsWith('.json')) {
+    ElMessage.error('请选择JSON格式的备份文件')
+    return false
+  }
+  
   const reader = new FileReader()
-  reader.onload = (e) => {
+  
+  reader.onerror = () => {
+    ElMessage.error('文件读取失败，请重试')
+  }
+  
+  reader.onload = async (e) => {
     try {
       const data = JSON.parse(e.target.result)
+      
+      // 验证数据格式
+      if (!data || typeof data !== 'object') {
+        throw new Error('无效的备份文件格式')
+      }
       
       ElMessageBox.confirm(
         `即将导入以下数据类型：${importOptions.value.join('、')}。这将覆盖现有数据，是否继续？`,
@@ -518,60 +586,104 @@ const beforeImport = (file) => {
           cancelButtonText: '取消',
           type: 'warning'
         }
-      ).then(() => {
+      ).then(async () => {
         let importCount = 0
+        const errors = []
         
-        // 根据选择导入数据
-        if (importOptions.value.includes('novels') && data.novels) {
-          localStorage.setItem('novels', JSON.stringify(data.novels))
-          importCount++
-        }
-        
-        if (importOptions.value.includes('prompts') && data.prompts) {
-          localStorage.setItem('prompts', JSON.stringify(data.prompts))
-          importCount++
-        }
-        
-        if (importOptions.value.includes('novelGenres') && data.novelGenres) {
-          localStorage.setItem('novelGenres', JSON.stringify(data.novelGenres))
-          importCount++
-        }
-        
-        if (importOptions.value.includes('writingGoals')) {
-          if (data.writingGoals) {
-            localStorage.setItem('writingGoals', JSON.stringify(data.writingGoals))
-            importCount++
-          } else if (data.goals) {
-            localStorage.setItem('writingGoals', JSON.stringify(data.goals))
-            importCount++
+        try {
+          // 根据选择导入数据到IndexedDB
+          if (importOptions.value.includes('novels') && data.novels) {
+            try {
+              await storageService.setItem('novels', data.novels)
+              importCount++
+            } catch (error) {
+              errors.push('小说数据导入失败')
+              console.error('导入小说数据失败:', error)
+            }
           }
-        }
-        
-        if (importOptions.value.includes('settings') && data.settings) {
-          if (data.settings.apiConfig) {
-            localStorage.setItem('api-config', JSON.stringify(data.settings.apiConfig))
-            importCount++
+          
+          if (importOptions.value.includes('prompts') && data.prompts) {
+            try {
+              await storageService.setItem('prompts', data.prompts)
+              importCount++
+            } catch (error) {
+              errors.push('提示词库导入失败')
+              console.error('导入提示词库失败:', error)
+            }
           }
-          if (data.settings.tokenUsage) {
-            localStorage.setItem('token-usage', JSON.stringify(data.settings.tokenUsage))
-            importCount++
+          
+          if (importOptions.value.includes('novelGenres') && data.novelGenres) {
+            try {
+              await storageService.setItem('novelGenres', data.novelGenres)
+              importCount++
+            } catch (error) {
+              errors.push('小说类型导入失败')
+              console.error('导入小说类型失败:', error)
+            }
           }
+          
+          if (importOptions.value.includes('writingGoals')) {
+            try {
+              if (data.writingGoals) {
+                await storageService.setItem('writingGoals', data.writingGoals)
+                importCount++
+              } else if (data.goals) {
+                await storageService.setItem('writingGoals', data.goals)
+                importCount++
+              }
+            } catch (error) {
+              errors.push('写作目标导入失败')
+              console.error('导入写作目标失败:', error)
+            }
+          }
+          
+          if (importOptions.value.includes('settings') && data.settings) {
+            try {
+              if (data.settings.apiConfig) {
+                await storageService.setItem('apiConfig', data.settings.apiConfig)
+                importCount++
+              }
+              if (data.settings.tokenUsage) {
+                await storageService.setItem('token-usage', data.settings.tokenUsage)
+                importCount++
+              }
+            } catch (error) {
+              errors.push('系统设置导入失败')
+              console.error('导入系统设置失败:', error)
+            }
+          }
+          
+          // 重新计算数据统计
+          await calculateDataStats()
+          
+          // 显示结果
+          if (importCount > 0) {
+            if (errors.length > 0) {
+              ElMessage.warning(`成功导入 ${importCount} 项数据，${errors.length} 项失败：${errors.join('、')}`)
+            } else {
+              ElMessage.success(`成功导入 ${importCount} 项数据`)
+            }
+          } else {
+            if (errors.length > 0) {
+              ElMessage.error(`导入失败：${errors.join('、')}`)
+            } else {
+              ElMessage.warning('未找到匹配的数据进行导入')
+            }
+          }
+        } catch (error) {
+          console.error('数据导入过程中出错:', error)
+          ElMessage.error('导入过程中出现错误，请检查文件格式')
         }
-        
-        // 重新计算数据统计
-        calculateDataStats()
-        
-        if (importCount > 0) {
-          ElMessage.success(`成功导入 ${importCount} 项数据`)
-        } else {
-          ElMessage.warning('未找到匹配的数据进行导入')
-        }
+      }).catch(() => {
+        // 用户取消导入
       })
     } catch (error) {
+      console.error('解析备份文件失败:', error)
       ElMessage.error('文件格式错误，请选择有效的备份文件')
     }
   }
-  reader.readAsText(file)
+  
+  reader.readAsText(file, 'UTF-8')
   return false // 阻止自动上传
 }
 
@@ -628,6 +740,30 @@ const clearSettings = () => {
       location.reload()
     }, 1000)
   })
+}
+
+// 数据迁移相关方法
+const checkMigrationStatus = async () => {
+  try {
+    const MIGRATION_KEY = 'migration_v1_dexie_completed'
+    const migrationCompleted = await storageService.getItem(MIGRATION_KEY)
+    
+    if (migrationCompleted) {
+      ElMessage.success('数据迁移已完成')
+    } else {
+      ElMessage.info('数据尚未迁移，建议进行迁移以获得更好的性能')
+    }
+  } catch (error) {
+    console.error('检查迁移状态失败:', error)
+    ElMessage.error('检查迁移状态失败')
+  }
+}
+
+const handleMigrationCompleted = () => {
+  showMigrationDialog.value = false
+  ElMessage.success('数据迁移完成！')
+  // 重新计算数据统计
+  calculateDataStats()
 }
 
 // 生命周期

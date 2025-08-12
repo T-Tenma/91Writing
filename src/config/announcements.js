@@ -117,9 +117,13 @@ export function getAnnouncementByVersion(version) {
   return announcements.find(announcement => announcement.version === version)
 }
 
+import { storageService } from '../services/storageService'
+
+// ... (other code)
+
 // 检查是否有新版本公告
-export function hasNewAnnouncement() {
-  const lastReadVersion = localStorage.getItem('lastReadAnnouncementVersion')
+export async function hasNewAnnouncement() {
+  const lastReadVersion = await storageService.getItem('lastReadAnnouncementVersion')
   const latestAnnouncement = getLatestAnnouncement()
   
   if (!lastReadVersion) {
@@ -130,17 +134,15 @@ export function hasNewAnnouncement() {
 }
 
 // 标记公告为已读
-export function markAnnouncementAsRead(version) {
-  localStorage.setItem('lastReadAnnouncementVersion', version)
-  localStorage.setItem('lastReadAnnouncementDate', new Date().toISOString())
+export async function markAnnouncementAsRead(version) {
+  await storageService.setItem('lastReadAnnouncementVersion', version)
+  await storageService.setItem('lastReadAnnouncementDate', new Date().toISOString())
 }
 
-
-
 // 获取用户统计信息
-export function getAnnouncementStats() {
+export async function getAnnouncementStats() {
   return {
-    lastReadVersion: localStorage.getItem('lastReadAnnouncementVersion'),
-    lastReadDate: localStorage.getItem('lastReadAnnouncementDate')
+    lastReadVersion: await storageService.getItem('lastReadAnnouncementVersion'),
+    lastReadDate: await storageService.getItem('lastReadAnnouncementDate')
   }
 }

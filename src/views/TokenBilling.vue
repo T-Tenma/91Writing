@@ -350,24 +350,29 @@ const showDetailsDialog = ref(false)
 const selectedRecord = ref(null)
 
 // Token统计数据
-const todayStats = computed(() => {
-  return billingService.getTodayStats()
+const todayStats = ref({
+  tokenCount: 0,
+  cost: 0,
+  requestCount: 0
+})
+
+const usageStats = ref({
+  totalInputTokens: 0,
+  totalOutputTokens: 0,
+  totalCost: 0,
+  lastResetDate: new Date().toISOString()
 })
 
 const todayTokens = computed(() => {
-  return todayStats.value.tokenCount
-})
-
-const usageStats = computed(() => {
-  return billingService.getUsageStats()
+  return todayStats.value.tokenCount || 0
 })
 
 const totalInputTokens = computed(() => {
-  return usageStats.value.totalInputTokens
+  return usageStats.value.totalInputTokens || 0
 })
 
 const totalOutputTokens = computed(() => {
-  return usageStats.value.totalOutputTokens
+  return usageStats.value.totalOutputTokens || 0
 })
 
 const totalTokens = computed(() => {
@@ -377,10 +382,15 @@ const totalTokens = computed(() => {
 // 使用记录数据
 const billingRecords = ref([])
 
-// 加载计费记录
-const loadBillingRecords = () => {
+// 加载计费记录和统计数据
+const loadBillingRecords = async () => {
   try {
-    billingRecords.value = billingService.getBillingRecords()
+    // 加载计费记录
+    billingRecords.value = await billingService.getBillingRecords()
+    
+    // 加载统计数据
+    todayStats.value = await billingService.getTodayStats()
+    usageStats.value = await billingService.getUsageStats()
     
     // 如果没有数据，可选择是否添加示例数据
     if (billingRecords.value.length === 0) {
@@ -389,12 +399,15 @@ const loadBillingRecords = () => {
   } catch (error) {
     console.error('加载使用记录失败:', error)
     billingRecords.value = []
+    // 设置默认值
+    todayStats.value = { tokenCount: 0, cost: 0, requestCount: 0 }
+    usageStats.value = { totalInputTokens: 0, totalOutputTokens: 0, totalCost: 0, lastResetDate: new Date().toISOString() }
   }
 }
 
 // 计算属性
 const filteredRecords = computed(() => {
-  let result = billingRecords.value
+  let result = billingRecords.value || []
   
   // 类型筛选
   if (typeFilter.value !== 'all') {
@@ -434,12 +447,16 @@ const paginatedRecords = computed(() => {
 })
 
 const totalFilteredTokens = computed(() => {
-  return filteredRecords.value.reduce((sum, record) => sum + record.totalTokens, 0)
+  return filteredRecords.value.reduce((sum, record) => sum + (record.totalTokens || 0), 0)
 })
 
 // 方法
 const formatNumber = (num) => {
-  return num.toLocaleString()
+  // 处理undefined、null或非数字值
+  if (num === undefined || num === null || isNaN(num)) {
+    return '0'
+  }
+  return Number(num).toLocaleString()
 }
 
 const formatDateTime = (date) => {

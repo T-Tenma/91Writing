@@ -1,23 +1,25 @@
+import { storageService } from './storageService';
+
 class BillingService {
   constructor() {
     this.initializeStorage()
   }
 
   // 初始化本地存储
-  initializeStorage() {
-    if (!localStorage.getItem('account_balance')) {
-      localStorage.setItem('account_balance', '0.00') // 初始余额为0
+  async initializeStorage() {
+    if (await storageService.getItem('account_balance') === null) {
+      await storageService.setItem('account_balance', '0.00') // 初始余额为0
     }
-    if (!localStorage.getItem('billing_records')) {
-      localStorage.setItem('billing_records', JSON.stringify([]))
+    if (await storageService.getItem('billing_records') === null) {
+      await storageService.setItem('billing_records', [])
     }
-    if (!localStorage.getItem('token_usage_stats')) {
-      localStorage.setItem('token_usage_stats', JSON.stringify({
+    if (await storageService.getItem('token_usage_stats') === null) {
+      await storageService.setItem('token_usage_stats', {
         totalInputTokens: 0,
         totalOutputTokens: 0,
         totalCost: 0,
         lastResetDate: new Date().toISOString()
-      }))
+      })
     }
   }
 
@@ -55,7 +57,7 @@ class BillingService {
     }
   }
 
-  // 计算token使用费用
+  // 计算token费用费用
   calculateCost(model, inputTokens, outputTokens) {
     const pricing = this.getModelPricing()
     const modelPricing = pricing[model] || pricing['default']
@@ -80,36 +82,37 @@ class BillingService {
   }
 
   // 获取账户余额
-  getAccountBalance() {
-    return parseFloat(localStorage.getItem('account_balance') || '0')
+  async getAccountBalance() {
+    const balance = await storageService.getItem('account_balance')
+    return parseFloat(balance || '0')
   }
 
   // 检查余额是否足够
-  checkBalance(estimatedCost) {
-    const balance = this.getAccountBalance()
+  async checkBalance(estimatedCost) {
+    const balance = await this.getAccountBalance()
     return balance >= estimatedCost
   }
 
   // 扣除费用
-  deductBalance(amount) {
-    const currentBalance = this.getAccountBalance()
+  async deductBalance(amount) {
+    const currentBalance = await this.getAccountBalance()
     const newBalance = Math.max(0, currentBalance - amount)
-    localStorage.setItem('account_balance', newBalance.toString())
+    await storageService.setItem('account_balance', newBalance.toString())
     return newBalance
   }
 
   // 充值余额
-  addBalance(amount) {
-    const currentBalance = this.getAccountBalance()
+  async addBalance(amount) {
+    const currentBalance = await this.getAccountBalance()
     const newBalance = currentBalance + amount
-    localStorage.setItem('account_balance', newBalance.toString())
+    await storageService.setItem('account_balance', newBalance.toString())
     return newBalance
   }
 
   // 记录API调用
-  recordAPICall(params) {
+  async recordAPICall(params) {
     try {
-      const records = this.getBillingRecords()
+      const records = await this.getBillingRecords()
       const cost = this.calculateCost(params.model, params.inputTokens, params.outputTokens)
       
       const record = {
@@ -133,13 +136,13 @@ class BillingService {
         records.splice(1000)
       }
       
-      localStorage.setItem('billing_records', JSON.stringify(records))
+      await storageService.setItem('billing_records', records)
       
       // 扣除费用
-      this.deductBalance(cost)
+      await this.deductBalance(cost)
       
       // 更新统计信息
-      this.updateUsageStats(params.inputTokens || 0, params.outputTokens || 0, cost)
+      await this.updateUsageStats(params.inputTokens || 0, params.outputTokens || 0, cost)
       
       console.log(`API调用记录：模型=${params.model}, 输入=${params.inputTokens}tokens, 输出=${params.outputTokens}tokens, 费用=¥${cost.toFixed(4)}`)
       
@@ -151,10 +154,10 @@ class BillingService {
   }
 
   // 获取计费记录
-  getBillingRecords() {
+  async getBillingRecords() {
     try {
-      const records = localStorage.getItem('billing_records')
-      return records ? JSON.parse(records) : []
+      const records = await storageService.getItem('billing_records')
+      return records || []
     } catch (error) {
       console.error('获取计费记录失败:', error)
       return []
@@ -162,26 +165,26 @@ class BillingService {
   }
 
   // 更新使用统计
-  updateUsageStats(inputTokens, outputTokens, cost) {
+  async updateUsageStats(inputTokens, outputTokens, cost) {
     try {
-      const stats = JSON.parse(localStorage.getItem('token_usage_stats') || '{}')
+      const stats = await storageService.getItem('token_usage_stats') || {}
       
       stats.totalInputTokens = (stats.totalInputTokens || 0) + inputTokens
       stats.totalOutputTokens = (stats.totalOutputTokens || 0) + outputTokens
       stats.totalCost = (stats.totalCost || 0) + cost
       stats.lastUpdateDate = new Date().toISOString()
       
-      localStorage.setItem('token_usage_stats', JSON.stringify(stats))
+      await storageService.setItem('token_usage_stats', stats)
     } catch (error) {
       console.error('更新使用统计失败:', error)
     }
   }
 
   // 获取使用统计
-  getUsageStats() {
+  async getUsageStats() {
     try {
-      const stats = localStorage.getItem('token_usage_stats')
-      return stats ? JSON.parse(stats) : {
+      const stats = await storageService.getItem('token_usage_stats')
+      return stats || {
         totalInputTokens: 0,
         totalOutputTokens: 0,
         totalCost: 0,
@@ -199,8 +202,8 @@ class BillingService {
   }
 
   // 获取今日使用统计
-  getTodayStats() {
-    const records = this.getBillingRecords()
+  async getTodayStats() {
+    const records = await this.getBillingRecords()
     const today = new Date().toDateString()
     
     const todayRecords = records.filter(record => 
@@ -215,8 +218,8 @@ class BillingService {
   }
 
   // 获取最近N天的使用趋势
-  getUsageTrend(days = 7) {
-    const records = this.getBillingRecords()
+  async getUsageTrend(days = 7) {
+    const records = await this.getBillingRecords()
     const trend = []
     
     for (let i = days - 1; i >= 0; i--) {
@@ -240,9 +243,9 @@ class BillingService {
   }
 
   // 清除过期记录（保留最近30天）
-  cleanOldRecords() {
+  async cleanOldRecords() {
     try {
-      const records = this.getBillingRecords()
+      const records = await this.getBillingRecords()
       const thirtyDaysAgo = new Date()
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
       
@@ -250,7 +253,7 @@ class BillingService {
         new Date(record.timestamp) > thirtyDaysAgo
       )
       
-      localStorage.setItem('billing_records', JSON.stringify(filteredRecords))
+      await storageService.setItem('billing_records', filteredRecords)
       
       console.log(`清理了 ${records.length - filteredRecords.length} 条过期记录`)
     } catch (error) {
@@ -259,13 +262,13 @@ class BillingService {
   }
 
   // 导出计费数据
-  exportBillingData(format = 'json') {
-    const records = this.getBillingRecords()
-    const stats = this.getUsageStats()
+  async exportBillingData(format = 'json') {
+    const records = await this.getBillingRecords()
+    const stats = await this.getUsageStats()
     
     const exportData = {
       exportTime: new Date().toISOString(),
-      accountBalance: this.getAccountBalance(),
+      accountBalance: await this.getAccountBalance(),
       usageStats: stats,
       records: records
     }

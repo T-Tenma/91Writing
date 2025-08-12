@@ -240,6 +240,7 @@ import {
 } from '@element-plus/icons-vue'
 import WritingGoals from '@/components/WritingGoals.vue'
 import billingService from '@/services/billing.js'
+import { storageService } from '@/services/storageService'
 
 const router = useRouter()
 const novelStore = useNovelStore()
@@ -248,7 +249,7 @@ const novelStore = useNovelStore()
 const showGoalsDialog = ref(false)
 const stats = computed(() => {
   // 从本地存储获取真实的小说数据
-  const novelsData = JSON.parse(localStorage.getItem('novels') || '[]')
+  const novelsData = Array.isArray(novelsDataRef.value) ? novelsDataRef.value : []
   
   // 使用计费服务获取真实的token使用统计
   const usageStats = billingService.getUsageStats()
@@ -267,6 +268,10 @@ const stats = computed(() => {
   }
 })
 
+// 响应式数据状态
+const novelsDataRef = ref([])
+const writingGoalsDataRef = ref([])
+
 // 添加响应式的目标数据状态
 const goalsRefreshTrigger = ref(0)
 const maxDisplayGoals = ref(3) // 首页最多显示的目标数量
@@ -277,7 +282,7 @@ const activeGoals = computed(() => {
   goalsRefreshTrigger.value
   
   // 从本地存储获取真实的写作目标数据
-  const goalsData = JSON.parse(localStorage.getItem('writingGoals') || '[]')
+  const goalsData = Array.isArray(writingGoalsDataRef.value) ? writingGoalsDataRef.value : []
   const active = goalsData.filter(goal => goal.status === 'active')
   
   // 按优先级排序（priority字段，数字越小优先级越高），如果没有priority则按创建时间排序
@@ -317,7 +322,7 @@ const currentGoal = computed(() => {
 
 const recentNovels = computed(() => {
   // 从本地存储获取真实的小说数据
-  const novelsData = JSON.parse(localStorage.getItem('novels') || '[]')
+  const novelsData = Array.isArray(novelsDataRef.value) ? novelsDataRef.value : []
   
   // 按更新时间排序，取前3个
   return novelsData
@@ -420,29 +425,75 @@ const openBilling = () => {
 }
 
 // 页面获得焦点时重新计算数据，确保数据同步
-const refreshData = () => {
-  goalsRefreshTrigger.value++
-  console.log('首页刷新目标数据')
+const refreshData = async () => {
+  try {
+    goalsRefreshTrigger.value++
+    await loadData()
+    console.log('首页数据刷新完成')
+  } catch (error) {
+    console.error('首页数据刷新失败:', error)
+  }
+}
+
+// 防抖的刷新函数，避免频繁刷新
+let refreshTimeout = null
+const debouncedRefresh = () => {
+  if (refreshTimeout) {
+    clearTimeout(refreshTimeout)
+  }
+  refreshTimeout = setTimeout(refreshData, 300)
 }
 
 // 暴露刷新函数给全局，以便其他页面调用
-window.refreshHomeData = refreshData
+window.refreshHomeData = debouncedRefresh
 
 // 生命周期
-onMounted(() => {
+// 加载数据的函数
+const loadData = async () => {
+  try {
+    const novelsData = await storageService.getItem('novels')
+    const writingGoalsData = await storageService.getItem('writingGoals')
+    
+    // 确保数据格式正确，storageService现在返回对象而不是字符串
+    novelsDataRef.value = novelsData || []
+    writingGoalsDataRef.value = writingGoalsData || []
+  } catch (error) {
+    console.error('加载数据失败:', error)
+    novelsDataRef.value = []
+    writingGoalsDataRef.value = []
+  }
+}
+
+
+
+onMounted(async () => {
+  await loadData()
+  
   // 监听localStorage变化，以便实时更新目标数据
   window.addEventListener('storage', (e) => {
-    if (e.key === 'writingGoals') {
-      refreshData()
+    if (e.key === 'writingGoals' || e.key === 'novels') {
+      debouncedRefresh()
     }
   })
   
   // 监听页面可见性变化
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
-      refreshData()
+      debouncedRefresh()
     }
   })
+  
+  // 清理函数
+  const cleanup = () => {
+    if (refreshTimeout) {
+      clearTimeout(refreshTimeout)
+    }
+    window.removeEventListener('storage', debouncedRefresh)
+    document.removeEventListener('visibilitychange', debouncedRefresh)
+  }
+  
+  // 在组件卸载时清理
+  window.addEventListener('beforeunload', cleanup)
 })
 </script>
 

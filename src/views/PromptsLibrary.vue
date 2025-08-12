@@ -314,6 +314,7 @@ import {
   Plus, Search, MoreFilled, Edit, CopyDocument, 
   Delete, Upload, UploadFilled
 } from '@element-plus/icons-vue'
+import { storageService } from '@/services/storageService'
 
 // 响应式数据
 const activeCategory = ref('all')
@@ -709,17 +710,18 @@ const cancelImport = () => {
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
   // 加载提示词数据
-  loadPrompts()
+  await loadPrompts()
 })
 
 // 加载提示词数据
-const loadPrompts = () => {
-  const savedPrompts = localStorage.getItem('prompts')
+const loadPrompts = async () => {
+  const savedPrompts = await storageService.getItem('prompts')
   if (savedPrompts) {
     try {
-      const parsed = JSON.parse(savedPrompts)
+      // storageService现在返回解析后的对象，不需要再次JSON.parse
+      const parsed = Array.isArray(savedPrompts) ? savedPrompts : (typeof savedPrompts === 'string' ? JSON.parse(savedPrompts) : [])
       prompts.value = parsed
     } catch (error) {
       console.error('加载提示词失败:', error)
@@ -1328,9 +1330,9 @@ const getDefaultPrompts = () => {
 }
 
 // 保存提示词数据
-const savePrompts = () => {
+const savePrompts = async () => {
   try {
-    localStorage.setItem('prompts', JSON.stringify(prompts.value))
+    await storageService.setItem('prompts', JSON.stringify(prompts.value))
   } catch (error) {
     console.error('保存提示词失败:', error)
   }

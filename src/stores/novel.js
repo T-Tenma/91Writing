@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import apiService from '../services/api.js'
+import { storageService } from '../services/storageService'
 
 export const useNovelStore = defineStore('novel', () => {
   // 状态
@@ -20,7 +21,12 @@ export const useNovelStore = defineStore('novel', () => {
   const isGenerating = ref(false)
   const corpus = ref([])
   
-
+  // 文章相关状态
+  const articleSummary = ref('')
+  const isGeneratingSummary = ref(false)
+  const articleStats = ref({})
+  const writingAdvice = ref('')
+  const isGeneratingAdvice = ref(false)
   
   // 写作工具数据
   const characters = ref([])
@@ -52,18 +58,18 @@ export const useNovelStore = defineStore('novel', () => {
   const getCurrentApiConfig = () => {
     return currentConfigType.value === 'official' ? officialApiConfig.value : customApiConfig.value
   }
-  
+
   // 初始化时检查API配置
-  const initializeApiConfig = () => {
+  const initializeApiConfig = async () => {
     try {
       // 加载配置类型
-      const savedType = localStorage.getItem('apiConfigType') || 'official'
+      const savedType = await storageService.getItem('apiConfigType') || 'official'
       currentConfigType.value = savedType
       
       // 加载官方配置
-      const savedOfficial = localStorage.getItem('officialApiConfig')
+      const savedOfficial = await storageService.getItem('officialApiConfig')
       if (savedOfficial) {
-        const config = JSON.parse(savedOfficial)
+        const config = savedOfficial
         // 官方配置只允许覆盖API密钥等参数，baseURL始终保持固定
         officialApiConfig.value = {
           ...officialApiConfig.value,
@@ -73,16 +79,16 @@ export const useNovelStore = defineStore('novel', () => {
       }
       
       // 加载自定义配置
-      const savedCustom = localStorage.getItem('customApiConfig')
+      const savedCustom = await storageService.getItem('customApiConfig')
       if (savedCustom) {
-        const config = JSON.parse(savedCustom)
+        const config = savedCustom
         customApiConfig.value = { ...customApiConfig.value, ...config }
       }
       
       // 使用当前配置类型的配置
       const currentConfig = getCurrentApiConfig()
       isApiConfigured.value = !!currentConfig.apiKey
-      apiService.updateConfig(currentConfig)
+      await apiService.updateConfig(currentConfig)
       
     } catch (error) {
       console.error('初始化API配置失败:', error)
@@ -91,66 +97,26 @@ export const useNovelStore = defineStore('novel', () => {
   
   // 立即执行初始化
   initializeApiConfig()
-  
-  // 摘要功能
-  const articleSummary = ref('')
-  const isGeneratingSummary = ref(false)
-  
-  // 写作建议
-  const writingAdvice = ref('')
-  const isGeneratingAdvice = ref(false)
-  
-  // 文章统计信息
-  const articleStats = ref({
-    wordCount: 0,
-    readingTime: 0,
-    sentiment: '',
-    tags: [],
-    category: '',
-    score: 0
-  })
 
-  // 计算属性
-  const wordCount = computed(() => {
-    // 去除HTML标签，计算纯文本字数，与文章统计保持一致
-    return currentNovel.value.replace(/<[^>]*>/g, '').length
-  })
-
-  const readingTime = computed(() => {
-    // 按照每分钟200字的阅读速度计算
-    return Math.ceil(wordCount.value / 200)
-  })
-
-  // 方法
-  const setCurrentNovel = async (content) => {
-    currentNovel.value = content
-    await updateStats()
+  // 基本的setter方法
+  const setCurrentNovel = (novel) => {
+    currentNovel.value = novel
   }
 
   const setGeneratedContent = (content) => {
     generatedContent.value = content
   }
 
-  const addToNovel = async () => {
-    if (generatedContent.value) {
-      // 如果当前内容为空，直接设置
-      if (!currentNovel.value || currentNovel.value === '<p><br></p>') {
-        currentNovel.value = `<p>${generatedContent.value}</p>`
-      } else {
-        // 如果有内容，添加新段落
-        currentNovel.value += `<p><br></p><p>${generatedContent.value}</p>`
-      }
-      await updateStats()
-    }
+  const addToNovel = (content) => {
+    currentNovel.value += content
   }
 
-  const clearNovel = async () => {
+  const clearNovel = () => {
     currentNovel.value = ''
-    await updateStats()
   }
 
-  const setOutline = (content) => {
-    outline.value = content
+  const setOutline = (outlineContent) => {
+    outline.value = outlineContent
   }
 
   const setGeneratingOutline = (status) => {
@@ -159,28 +125,20 @@ export const useNovelStore = defineStore('novel', () => {
 
   const clearOutline = () => {
     outline.value = ''
-    chapters.value = []
   }
 
-  // 章节管理方法
   const parseOutlineToChapters = () => {
-    const outlineText = outline.value
-    const chapterRegex = /###\s*(.+?)\n([\s\S]*?)(?=###|$)/g
-    const newChapters = []
-    let match
-    let index = 1
-    
-    while ((match = chapterRegex.exec(outlineText)) !== null) {
-      newChapters.push({
-        id: index++,
-        title: match[1].trim(),
-        content: match[2].trim(),
-        generatedText: '',
-        isCompleted: false
-      })
+    // 解析大纲为章节
+    if (outline.value) {
+      const lines = outline.value.split('\n').filter(line => line.trim())
+      const newChapters = lines.map((line, index) => ({
+        id: index + 1,
+        title: line.trim(),
+        content: '',
+        isGenerated: false
+      }))
+      chapters.value = newChapters
     }
-    
-    chapters.value = newChapters
   }
 
   const setSelectedChapter = (chapter) => {
@@ -194,11 +152,10 @@ export const useNovelStore = defineStore('novel', () => {
     }
   }
 
-  const setChapterGenerated = (chapterId, text) => {
+  const setChapterGenerated = (chapterId, status) => {
     const chapter = chapters.value.find(c => c.id === chapterId)
     if (chapter) {
-      chapter.generatedText = text
-      chapter.isCompleted = true
+      chapter.isGenerated = status
     }
   }
 
@@ -206,21 +163,8 @@ export const useNovelStore = defineStore('novel', () => {
     isGeneratingChapter.value = status
   }
 
-  // AI对话功能
-  const addChatMessage = (message, isUser = true) => {
-    // 生成唯一ID，避免快速操作时ID重复
-    const generateUniqueId = () => {
-      const timestamp = Date.now()
-      const random = Math.floor(Math.random() * 10000)
-      return timestamp + random
-    }
-    
-    aiChatHistory.value.push({
-      id: generateUniqueId(),
-      content: message,
-      isUser,
-      timestamp: new Date().toLocaleTimeString()
-    })
+  const addChatMessage = (message) => {
+    aiChatHistory.value.push(message)
   }
 
   const setChatInput = (input) => {
@@ -239,114 +183,58 @@ export const useNovelStore = defineStore('novel', () => {
     selectedTemplate.value = template
   }
 
-  const setKeywords = (kw) => {
-    keywords.value = kw
+  const setKeywords = (keywordString) => {
+    keywords.value = keywordString
   }
 
   const setGenerating = (status) => {
     isGenerating.value = status
   }
 
-  const addCorpus = (text) => {
-    // 生成唯一ID，避免快速操作时ID重复
-    const generateUniqueId = () => {
-      const timestamp = Date.now()
-      const random = Math.floor(Math.random() * 10000)
-      return timestamp + random
-    }
-    
-    corpus.value.push({
-      id: generateUniqueId(),
-      content: text,
-      createdAt: new Date().toISOString()
-    })
+  const addCorpus = (item) => {
+    corpus.value.push(item)
   }
 
-  const removeCorpus = (id) => {
-    const index = corpus.value.findIndex(item => item.id === id)
-    if (index > -1) {
-      corpus.value.splice(index, 1)
-    }
+  const removeCorpus = (index) => {
+    corpus.value.splice(index, 1)
   }
 
-  const updateStats = async () => {
-    // 从HTML中提取纯文本进行统计
-    const content = currentNovel.value.replace(/<[^>]*>/g, '')
-    
-    // 基础统计（立即更新）
-    articleStats.value = {
-      wordCount: content.length,
-      readingTime: Math.ceil(content.length / 200),
-      sentiment: analyzeSentiment(content),
-      tags: generateTags(content),
-      category: categorizeContent(content),
-      score: calculateScore(content)
-    }
-    
-    // 如果配置了API且内容足够长，使用AI进行深度分析
-    if (isApiConfigured.value && content.length > 100) {
-      try {
-        await updateStatsWithAI(content)
-      } catch (error) {
-        console.log('AI分析失败，使用本地分析结果:', error.message)
-      }
-    }
+
+
+
+
+  const updateStats = (stats) => {
+    articleStats.value = stats
   }
-  
-  // 使用AI进行深度文章分析
-  const updateStatsWithAI = async (content) => {
+
+  // 计算属性
+  const wordCount = computed(() => {
+    return currentNovel.value.replace(/<[^>]*>/g, '').length
+  })
+
+  const readingTime = computed(() => {
+    const words = wordCount.value
+    const wordsPerMinute = 200 // 平均阅读速度
+    return Math.ceil(words / wordsPerMinute)
+  })
+
+  // 切换配置类型
+  const switchConfigType = async (type) => {
     try {
-      const analysis = await apiService.analyzeArticle(content)
+      currentConfigType.value = type
+      await storageService.setItem('apiConfigType', type)
       
-      // 更新AI分析结果
-      articleStats.value = {
-        ...articleStats.value,
-        sentiment: analysis.sentiment || articleStats.value.sentiment,
-        tags: analysis.tags || articleStats.value.tags,
-        category: analysis.category || articleStats.value.category,
-        score: analysis.score || articleStats.value.score,
-        aiAnalysis: analysis // 保存完整的AI分析结果
-      }
+      // 更新apiService配置
+      const currentConfig = getCurrentApiConfig()
+      await apiService.updateConfig(currentConfig)
+      isApiConfigured.value = !!currentConfig.apiKey
     } catch (error) {
-      console.error('AI文章分析失败:', error)
+      console.error('切换配置类型失败:', error)
       throw error
     }
   }
 
-  // API配置方法
-  const updateApiConfig = (config, configType = null) => {
-    // 如果没有指定类型，使用当前配置类型
-    const targetType = configType || currentConfigType.value
-    
-    if (targetType === 'official') {
-      // 官方配置：强制保持官方API地址
-      officialApiConfig.value = { 
-        ...officialApiConfig.value, 
-        ...config,
-        baseURL: 'https://ai.91hub.vip/v1'
-      }
-    } else {
-      // 自定义配置：允许所有参数更新
-      customApiConfig.value = { ...customApiConfig.value, ...config }
-    }
-    
-    // 更新apiService配置为当前活动配置
-    const currentConfig = getCurrentApiConfig()
-    apiService.updateConfig(currentConfig)
-    isApiConfigured.value = !!currentConfig.apiKey
-  }
-  
-  // 切换配置类型
-  const switchConfigType = (type) => {
-    currentConfigType.value = type
-    localStorage.setItem('apiConfigType', type)
-    
-    // 更新apiService配置
-    const currentConfig = getCurrentApiConfig()
-    apiService.updateConfig(currentConfig)
-    isApiConfigured.value = !!currentConfig.apiKey
-  }
-
+  // ... (rest of the store)
   const validateApiKey = async () => {
     try {
       const isValid = await apiService.validateAPIKey()
@@ -752,6 +640,58 @@ export const useNovelStore = defineStore('novel', () => {
       throw error
     } finally {
       isGenerating.value = false
+    }
+  }
+
+  // 更新API配置
+  const updateApiConfig = async (config, configType = null) => {
+    try {
+      // 如果指定了配置类型，使用指定的类型；否则使用当前类型
+      const targetType = configType || currentConfigType.value
+      
+      if (targetType === 'official') {
+        // 官方配置：保护baseURL不被覆盖
+        const safeConfig = { ...config }
+        safeConfig.baseURL = 'https://ai.91hub.vip/v1' // 强制保持官方地址
+        
+        officialApiConfig.value = { ...officialApiConfig.value, ...safeConfig }
+        
+        // 创建纯对象副本用于存储，避免ref代理问题
+        const configToStore = {
+          apiKey: officialApiConfig.value.apiKey,
+          baseURL: officialApiConfig.value.baseURL,
+          selectedModel: officialApiConfig.value.selectedModel,
+          maxTokens: officialApiConfig.value.maxTokens,
+          unlimitedTokens: officialApiConfig.value.unlimitedTokens,
+          temperature: officialApiConfig.value.temperature
+        }
+        
+        await storageService.setItem('officialApiConfig', configToStore)
+      } else {
+        customApiConfig.value = { ...customApiConfig.value, ...config }
+        
+        // 创建纯对象副本用于存储，避免ref代理问题
+        const configToStore = {
+          apiKey: customApiConfig.value.apiKey,
+          baseURL: customApiConfig.value.baseURL,
+          selectedModel: customApiConfig.value.selectedModel,
+          maxTokens: customApiConfig.value.maxTokens,
+          unlimitedTokens: customApiConfig.value.unlimitedTokens,
+          temperature: customApiConfig.value.temperature
+        }
+        
+        await storageService.setItem('customApiConfig', configToStore)
+      }
+      
+      // 如果更新的是当前活动的配置类型，同步到apiService
+      if (targetType === currentConfigType.value) {
+        const currentConfig = getCurrentApiConfig()
+        await apiService.updateConfig(currentConfig)
+        isApiConfigured.value = !!currentConfig.apiKey
+      }
+    } catch (error) {
+      console.error('更新API配置失败:', error)
+      throw error
     }
   }
 

@@ -266,391 +266,98 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useNovelStore } from '@/stores/novel'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  FolderAdd, Upload, Files, Clock, Coin, Setting, Search, Delete,
-  Document, RefreshRight, Download, View
-} from '@element-plus/icons-vue'
+import { saveAs } from 'file-saver'
+import { storageService } from '../services/storageService'
 
-const novelStore = useNovelStore()
+// ... (other component setup code)
 
-// 响应式数据
-const backups = ref([])
-const searchKeyword = ref('')
-const autoBackupEnabled = ref(false)
-const autoBackupFrequency = ref('daily')
-const maxBackupCount = ref(10)
-const showCreateBackupDialog = ref(false)
-const showBackupDetailsDialog = ref(false)
-const selectedBackup = ref(null)
-const creating = ref(false)
-const backupFormRef = ref()
-
-const backupForm = ref({
-  name: '',
-  description: '',
-  content: ['novel', 'chapters', 'templates', 'corpus']
-})
-
-const backupRules = {
-  name: [
-    { required: true, message: '请输入备份名称', trigger: 'blur' }
-  ]
-}
-
-// 计算属性
-const filteredBackups = computed(() => {
-  if (!searchKeyword.value) return backups.value
-  return backups.value.filter(backup => 
-    backup.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
-    (backup.description && backup.description.toLowerCase().includes(searchKeyword.value.toLowerCase()))
-  )
-})
-
-const lastBackupDays = computed(() => {
-  if (backups.value.length === 0) return '无'
-  const lastBackup = backups.value[0]
-  const days = Math.floor((Date.now() - new Date(lastBackup.createdAt)) / (1000 * 60 * 60 * 24))
-  return days === 0 ? '今天' : `${days}天前`
-})
-
-const totalBackupSize = computed(() => {
-  const total = backups.value.reduce((sum, backup) => sum + backup.size, 0)
-  return formatFileSize(total)
-})
-
-const nextBackupTime = computed(() => {
-  if (!autoBackupEnabled.value) return '未开启'
-  // 这里应该根据频率计算下次备份时间
-  return '2小时后'
-})
-
-// 方法
-const createBackup = () => {
-  backupForm.value.name = `备份_${new Date().toLocaleString().replace(/[/:]/g, '-')}`
-  showCreateBackupDialog.value = true
-}
-
-const confirmCreateBackup = async () => {
+// --- Data Export ---
+const exportData = async () => {
   try {
-    await backupFormRef.value.validate()
-    creating.value = true
+    const chapters = await storageService.getItem('novel_chapters') || []
+    const goals = await storageService.getItem('writingGoals') || []
     
-    // 收集要备份的数据
-    const backupData = {}
-    const contentList = []
-    
-    if (backupForm.value.content.includes('novel')) {
-      backupData.novel = novelStore.currentNovel
-      contentList.push({ key: 'novel', name: '小说内容', size: new Blob([novelStore.currentNovel || '']).size })
+    const dataToExport = {
+      chapters,
+      goals,
+      // Add other data sources if needed
     }
     
-    if (backupForm.value.content.includes('chapters')) {
-      const chapters = JSON.parse(localStorage.getItem('novel_chapters') || '[]')
-      backupData.chapters = chapters
-      contentList.push({ key: 'chapters', name: '章节管理', size: new Blob([JSON.stringify(chapters)]).size })
-    }
-    
-    if (backupForm.value.content.includes('templates')) {
-      backupData.templates = novelStore.templates
-      contentList.push({ key: 'templates', name: '模板数据', size: new Blob([JSON.stringify(novelStore.templates)]).size })
-    }
-    
-    if (backupForm.value.content.includes('corpus')) {
-      backupData.corpus = novelStore.corpus
-      contentList.push({ key: 'corpus', name: '语料库', size: new Blob([JSON.stringify(novelStore.corpus)]).size })
-    }
-    
-    if (backupForm.value.content.includes('characters')) {
-      backupData.characters = novelStore.characters
-      contentList.push({ key: 'characters', name: '角色设定', size: new Blob([JSON.stringify(novelStore.characters)]).size })
-    }
-    
-    if (backupForm.value.content.includes('worldSettings')) {
-      backupData.worldSettings = novelStore.worldSettings
-      contentList.push({ key: 'worldSettings', name: '世界观设定', size: new Blob([JSON.stringify(novelStore.worldSettings)]).size })
-    }
-    
-    if (backupForm.value.content.includes('goals')) {
-      const goals = JSON.parse(localStorage.getItem('writingGoals') || '[]')
-      backupData.goals = goals
-      contentList.push({ key: 'goals', name: '写作目标', size: new Blob([JSON.stringify(goals)]).size })
-    }
-    
-    if (backupForm.value.content.includes('settings')) {
-      const settings = {
-        apiConfig: novelStore.apiConfig,
-        autoBackupSettings: { autoBackupEnabled: autoBackupEnabled.value, autoBackupFrequency: autoBackupFrequency.value, maxBackupCount: maxBackupCount.value }
-      }
-      backupData.settings = settings
-      contentList.push({ key: 'settings', name: '应用设置', size: new Blob([JSON.stringify(settings)]).size })
-    }
-    
-    // 创建备份记录
-    const backup = {
-      id: Date.now(),
-      name: backupForm.value.name,
-      description: backupForm.value.description,
-      type: 'manual',
-      size: new Blob([JSON.stringify(backupData)]).size,
-      data: backupData,
-      contentList: contentList,
-      createdAt: new Date()
-    }
-    
-    backups.value.unshift(backup)
-    saveBackups()
-    
-    showCreateBackupDialog.value = false
-    resetBackupForm()
-    ElMessage.success('备份创建成功')
+    const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json;charset=utf-8' })
+    saveAs(blob, `91writing_backup_${new Date().toISOString().slice(0, 10)}.json`)
+    ElMessage.success('数据导出成功')
   } catch (error) {
-    console.error('创建备份失败:', error)
-    ElMessage.error('创建备份失败')
-  } finally {
-    creating.value = false
+    ElMessage.error('数据导出失败: ' + error.message)
   }
 }
 
-const restoreBackup = async (backup) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要恢复备份 "${backup.name}" 吗？这将覆盖当前的数据。`,
-      '确认恢复',
-      { type: 'warning' }
-    )
-    
-    const data = backup.data
-    
-    // 恢复各种数据
-    if (data.novel) {
-      novelStore.setCurrentNovel(data.novel)
-    }
-    
-    if (data.chapters) {
-      localStorage.setItem('novel_chapters', JSON.stringify(data.chapters))
-    }
-    
-    if (data.templates) {
-      novelStore.templates = data.templates
-    }
-    
-    if (data.corpus) {
-      novelStore.corpus = data.corpus
-    }
-    
-    if (data.characters) {
-      novelStore.characters = data.characters
-    }
-    
-    if (data.worldSettings) {
-      novelStore.worldSettings = data.worldSettings
-    }
-    
-    if (data.goals) {
-      localStorage.setItem('writingGoals', JSON.stringify(data.goals))
-    }
-    
-    if (data.settings) {
-      if (data.settings.apiConfig) {
-        Object.assign(novelStore.apiConfig, data.settings.apiConfig)
+// --- Data Import ---
+const importData = async (file) => {
+  const reader = new FileReader()
+  reader.onload = async (e) => {
+    try {
+      const data = JSON.parse(e.target.result)
+      
+      await ElMessageBox.confirm('导入数据将覆盖现有内容，确定要继续吗？', '警告', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      })
+      
+      if (data.chapters) {
+        await storageService.setItem('novel_chapters', data.chapters)
       }
-      if (data.settings.autoBackupSettings) {
-        autoBackupEnabled.value = data.settings.autoBackupSettings.autoBackupEnabled
-        autoBackupFrequency.value = data.settings.autoBackupSettings.autoBackupFrequency
-        maxBackupCount.value = data.settings.autoBackupSettings.maxBackupCount
+      if (data.goals) {
+        await storageService.setItem('writingGoals', data.goals)
+      }
+      
+      ElMessage.success('数据导入成功，请刷新页面查看')
+    } catch (error) {
+      if (error !== 'cancel') {
+        ElMessage.error('数据导入失败: ' + error.message)
       }
     }
-    
-    ElMessage.success('备份恢复成功')
-  } catch {
-    // 用户取消
+  }
+  reader.readAsText(file.raw)
+}
+
+// --- Auto Backup ---
+const autoBackupSettings = reactive({
+  enabled: false,
+  interval: 24, // hours
+})
+
+const saveSettings = async () => {
+  await storageService.setItem('auto_backup_settings', autoBackupSettings)
+  ElMessage.success('自动备份设置已保存')
+}
+
+const loadSettings = async () => {
+  const saved = await storageService.getItem('auto_backup_settings')
+  if (saved) {
+    Object.assign(autoBackupSettings, saved)
   }
 }
 
-const downloadBackup = (backup) => {
-  const data = JSON.stringify(backup.data, null, 2)
-  const blob = new Blob([data], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${backup.name}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-  ElMessage.success('备份下载成功')
+// --- Backup Management ---
+const backupList = ref([])
+
+const saveBackupMeta = async (meta) => {
+  await storageService.setItem('backup_list', meta)
 }
 
-const viewBackupDetails = (backup) => {
-  selectedBackup.value = backup
-  showBackupDetailsDialog.value = true
-}
-
-const deleteBackup = async (backupId) => {
-  try {
-    await ElMessageBox.confirm('确定要删除这个备份吗？', '确认删除', {
-      type: 'warning'
-    })
-    
-    backups.value = backups.value.filter(backup => backup.id !== backupId)
-    saveBackups()
-    ElMessage.success('备份删除成功')
-  } catch {
-    // 用户取消
+const loadBackupMeta = async () => {
+  const saved = await storageService.getItem('backup_list')
+  if (saved) {
+    backupList.value = saved
   }
 }
 
-const importBackup = () => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = '.json'
-  input.onchange = (e) => {
-    const file = e.target.files[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        try {
-          const backupData = JSON.parse(e.target.result)
-          
-          // 创建导入的备份记录
-          const backup = {
-            id: Date.now(),
-            name: `导入_${file.name.replace('.json', '')}`,
-            description: '从文件导入的备份',
-            type: 'manual',
-            size: file.size,
-            data: backupData,
-            contentList: Object.keys(backupData).map(key => ({
-              key,
-              name: getContentName(key),
-              size: new Blob([JSON.stringify(backupData[key])]).size
-            })),
-            createdAt: new Date()
-          }
-          
-          backups.value.unshift(backup)
-          saveBackups()
-          ElMessage.success('备份导入成功')
-        } catch (error) {
-          ElMessage.error('导入失败，文件格式错误')
-        }
-      }
-      reader.readAsText(file)
-    }
-  }
-  input.click()
-}
-
-const cleanupOldBackups = async () => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要清理超过 ${maxBackupCount.value} 个的旧备份吗？`,
-      '确认清理',
-      { type: 'warning' }
-    )
-    
-    if (backups.value.length > maxBackupCount.value) {
-      const removed = backups.value.length - maxBackupCount.value
-      backups.value = backups.value.slice(0, maxBackupCount.value)
-      saveBackups()
-      ElMessage.success(`已清理 ${removed} 个旧备份`)
-    } else {
-      ElMessage.info('没有需要清理的备份')
-    }
-  } catch {
-    // 用户取消
-  }
-}
-
-const toggleAutoBackup = (enabled) => {
-  autoBackupEnabled.value = enabled
-  saveAutoBackupSettings()
-  ElMessage.success(enabled ? '自动备份已开启' : '自动备份已关闭')
-}
-
-const saveAutoBackupSettings = () => {
-  const settings = {
-    autoBackupEnabled: autoBackupEnabled.value,
-    autoBackupFrequency: autoBackupFrequency.value,
-    maxBackupCount: maxBackupCount.value
-  }
-  localStorage.setItem('auto_backup_settings', JSON.stringify(settings))
-}
-
-const loadAutoBackupSettings = () => {
-  try {
-    const saved = localStorage.getItem('auto_backup_settings')
-    if (saved) {
-      const settings = JSON.parse(saved)
-      autoBackupEnabled.value = settings.autoBackupEnabled || false
-      autoBackupFrequency.value = settings.autoBackupFrequency || 'daily'
-      maxBackupCount.value = settings.maxBackupCount || 10
-    }
-  } catch (error) {
-    console.error('加载自动备份设置失败:', error)
-  }
-}
-
-const resetBackupForm = () => {
-  backupForm.value = {
-    name: '',
-    description: '',
-    content: ['novel', 'chapters', 'templates', 'corpus']
-  }
-}
-
-const saveBackups = () => {
-  // 只保存备份元数据，不保存实际数据（太大）
-  const backupMeta = backups.value.map(backup => ({
-    ...backup,
-    data: undefined // 移除数据部分
-  }))
-  localStorage.setItem('backup_list', JSON.stringify(backupMeta))
-}
-
-const loadBackups = () => {
-  try {
-    const saved = localStorage.getItem('backup_list')
-    if (saved) {
-      backups.value = JSON.parse(saved)
-    }
-  } catch (error) {
-    console.error('加载备份列表失败:', error)
-  }
-}
-
-const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-const formatDateTime = (date) => {
-  if (!date) return ''
-  return new Date(date).toLocaleString()
-}
-
-const getContentName = (key) => {
-  const nameMap = {
-    novel: '小说内容',
-    chapters: '章节管理',
-    templates: '模板数据',
-    corpus: '语料库',
-    characters: '角色设定',
-    worldSettings: '世界观设定',
-    goals: '写作目标',
-    settings: '应用设置'
-  }
-  return nameMap[key] || key
-}
-
-// 生命周期
-onMounted(() => {
-  loadBackups()
-  loadAutoBackupSettings()
+onMounted(async () => {
+  await loadSettings()
+  await loadBackupMeta()
 })
 </script>
 

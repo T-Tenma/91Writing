@@ -243,6 +243,7 @@ import { ref, reactive, computed, nextTick, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { MagicStick, Refresh, CopyDocument, DocumentAdd } from '@element-plus/icons-vue'
 import { useNovelStore } from '@/stores/novel'
+import { storageService } from '@/services/storageService'
 
 const novelStore = useNovelStore()
 
@@ -263,9 +264,11 @@ const availablePrompts = ref([])
 const selectedPromptData = ref(null)
 
 // 加载小说列表
-const loadNovelList = () => {
+const loadNovelList = async () => {
   try {
-    const savedNovels = JSON.parse(localStorage.getItem('novels') || '[]')
+    const savedNovelsData = await storageService.getItem('novels')
+    // storageService现在返回解析后的对象，不需要再次JSON.parse
+    const savedNovels = Array.isArray(savedNovelsData) ? savedNovelsData : (typeof savedNovelsData === 'string' ? JSON.parse(savedNovelsData || '[]') : [])
     console.log('原始小说数据:', savedNovels) // 调试用
     
     if (!Array.isArray(savedNovels)) {
@@ -561,14 +564,14 @@ const displayContent = computed(() => {
   return generatedContent.value
 })
 
-const openTool = (toolType) => {
+const openTool = async (toolType) => {
   currentToolType.value = toolType
   showToolDialog.value = true
   clearForm()
   
   // 如果工具需要小说选择器，加载小说列表
   if (currentTool.value.hasNovelSelector) {
-    loadNovelList()
+    await loadNovelList()
   }
 }
 
@@ -610,7 +613,7 @@ const generateContent = async () => {
   
   try {
     // 构建提示词
-    const prompt = buildPrompt()
+    const prompt = await buildPrompt()
     console.log('工具生成提示词:', prompt)
     
     // 开始进度模拟
@@ -679,7 +682,7 @@ const updateStatusText = () => {
   }
 }
 
-const buildPrompt = () => {
+const buildPrompt = async () => {
   const tool = currentTool.value
   let prompt = ''
   let useTemplate = selectedPromptData.value && selectedPromptData.value.content
@@ -690,7 +693,9 @@ const buildPrompt = () => {
     const selectedNovel = novelList.value.find(novel => novel.value === toolForm.selectedNovel)
     if (selectedNovel) {
       // 获取完整的小说数据
-      const originalNovels = JSON.parse(localStorage.getItem('novels') || '[]')
+      const originalNovelsData = await storageService.getItem('novels')
+      // storageService现在返回解析后的对象，不需要再次JSON.parse
+      const originalNovels = Array.isArray(originalNovelsData) ? originalNovelsData : (typeof originalNovelsData === 'string' ? JSON.parse(originalNovelsData || '[]') : [])
       const originalNovel = originalNovels.find(n => n.id == selectedNovel.value || n.title === selectedNovel.label)
       
       novelInfoSection += `=== 目标小说信息 ===\n`
@@ -763,7 +768,8 @@ const buildPrompt = () => {
     if (tool.hasNovelSelector && toolForm.selectedNovel) {
       const selectedNovel = novelList.value.find(novel => novel.value === toolForm.selectedNovel)
       if (selectedNovel) {
-        const originalNovels = JSON.parse(localStorage.getItem('novels') || '[]')
+        const originalNovelsData = await storageService.getItem('novels')
+        const originalNovels = JSON.parse(originalNovelsData || '[]')
         const originalNovel = originalNovels.find(n => n.id == selectedNovel.value || n.title === selectedNovel.label)
         
         // 替换小说相关变量
@@ -974,11 +980,12 @@ ${generatedContent.value}
 
 
 // 加载提示词数据
-const loadPrompts = () => {
+const loadPrompts = async () => {
   try {
-    const savedPrompts = localStorage.getItem('prompts')
+    const savedPrompts = await storageService.getItem('prompts')
     if (savedPrompts) {
-      availablePrompts.value = JSON.parse(savedPrompts)
+      // storageService现在返回解析后的对象，不需要再次JSON.parse
+      availablePrompts.value = Array.isArray(savedPrompts) ? savedPrompts : (typeof savedPrompts === 'string' ? JSON.parse(savedPrompts) : [])
     } else {
       availablePrompts.value = []
     }
@@ -1024,9 +1031,9 @@ const validateCharacterCount = (field, value) => {
 }
 
 // 组件挂载时加载小说列表和提示词
-onMounted(() => {
-  loadNovelList()
-  loadPrompts()
+onMounted(async () => {
+  await loadNovelList()
+  await loadPrompts()
 })
 </script>
 

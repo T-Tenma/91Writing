@@ -435,6 +435,7 @@ import {
   Connection, Check, CircleCheck, Warning, Star, Plus,
   Delete, Download, Upload, RefreshLeft
 } from '@element-plus/icons-vue'
+import { storageService } from '@/services/storageService'
 
 // 响应式数据
 const activeTab = ref('1')
@@ -667,7 +668,7 @@ const saveConfig = (config) => {
   ElMessage.success(`${config.name} 配置已保存`)
 }
 
-const saveAllConfigs = () => {
+const saveAllConfigs = async () => {
   const validConfigs = apiConfigs.value.filter(config => config.name && config.apiUrl)
   
   if (validConfigs.length === 0) {
@@ -675,8 +676,8 @@ const saveAllConfigs = () => {
     return
   }
   
-  // 保存到本地存储
-  localStorage.setItem('aiApiConfigs', JSON.stringify(apiConfigs.value))
+  // 保存到IndexedDB
+  await storageService.setItem('aiApiConfigs', JSON.stringify(apiConfigs.value))
   ElMessage.success(`已保存 ${validConfigs.length} 个配置`)
 }
 
@@ -899,9 +900,9 @@ const resetAllConfigs = () => {
 }
 
 // 生命周期
-onMounted(() => {
-  // 从本地存储加载配置
-  const savedConfigs = localStorage.getItem('aiApiConfigs')
+onMounted(async () => {
+  // 从IndexedDB加载配置
+  const savedConfigs = await storageService.getItem('aiApiConfigs')
   if (savedConfigs) {
     try {
       const configs = JSON.parse(savedConfigs)

@@ -606,17 +606,23 @@ const onDrop = (event, targetIndex) => {
   draggedIndex.value = null
 }
 
-const saveGoals = () => {
-  localStorage.setItem('writingGoals', JSON.stringify(goals.value))
+import { storageService } from '@/services/storageService'
+
+// ... (other code)
+
+const saveGoals = async () => {
+  await storageService.setItem('writingGoals', goals.value)
   console.log('目标数据已保存:', goals.value)
   
   // 触发storage事件，通知其他页面数据已更新
-  const event = new StorageEvent('storage', {
-    key: 'writingGoals',
-    newValue: JSON.stringify(goals.value),
-    oldValue: null,
-    storageArea: localStorage
-  })
+  // Note: CustomEvent is a better way to communicate between components/tabs
+  // if storage events are not reliable across all browsers for this purpose.
+  const event = new CustomEvent('storage-updated', {
+    detail: {
+      key: 'writingGoals',
+      newValue: goals.value,
+    }
+  });
   window.dispatchEvent(event)
   
   // 如果首页的刷新函数存在，直接调用
@@ -625,11 +631,11 @@ const saveGoals = () => {
   }
 }
 
-const loadGoals = () => {
+const loadGoals = async () => {
   try {
-    const saved = localStorage.getItem('writingGoals')
+    const saved = await storageService.getItem('writingGoals')
     if (saved) {
-      goals.value = JSON.parse(saved)
+      goals.value = saved
       
       // 兼容性处理：为没有priority字段的目标添加priority
       let needsSave = false
@@ -641,7 +647,7 @@ const loadGoals = () => {
       })
       
       if (needsSave) {
-        saveGoals()
+        await saveGoals()
       }
     }
   } catch (error) {
@@ -649,48 +655,10 @@ const loadGoals = () => {
   }
 }
 
-const getGoalTypeText = (type) => {
-  const typeMap = {
-    daily: '每日',
-    weekly: '每周',
-    monthly: '每月',
-    custom: '自定义'
-  }
-  return typeMap[type] || '未知'
-}
+// ... (other code)
 
-const getGoalTypeColor = (type) => {
-  const colorMap = {
-    daily: 'primary',
-    weekly: 'success',
-    monthly: 'warning',
-    custom: 'info'
-  }
-  return colorMap[type] || 'info'
-}
-
-const formatDate = (date) => {
-  if (!date) return ''
-  return new Date(date).toLocaleDateString()
-}
-
-const formatDateRange = (startDate, endDate) => {
-  if (!startDate || !endDate) return ''
-  return `${formatDate(startDate)} - ${formatDate(endDate)}`
-}
-
-const getRemainingDays = (endDate) => {
-  if (!endDate) return 0
-  const end = new Date(endDate)
-  const now = new Date()
-  const diffTime = end - now
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  return Math.max(0, diffDays)
-}
-
-// 生命周期
-onMounted(() => {
-  loadGoals()
+onMounted(async () => {
+  await loadGoals()
 })
 </script>
 

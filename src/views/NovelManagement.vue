@@ -548,6 +548,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import apiService from '@/services/api.js'
+import { storageService } from '@/services/storageService'
 
 const router = useRouter()
 
@@ -575,11 +576,13 @@ const isSavingEdit = ref(false)
 const novels = ref([])
 
 // 加载小说数据
-const loadNovels = () => {
+const loadNovels = async () => {
   try {
-    const saved = localStorage.getItem('novels')
+    const saved = await storageService.getItem('novels')
     if (saved) {
-      const parsedNovels = JSON.parse(saved)
+      // storageService已经返回解析后的对象，不需要再次JSON.parse
+      const parsedNovels = Array.isArray(saved) ? saved : (typeof saved === 'string' ? JSON.parse(saved) : [])
+      
       // 将日期字符串转换为Date对象
       novels.value = parsedNovels.map(novel => ({
         ...novel,
@@ -598,8 +601,8 @@ const loadNovels = () => {
     } else {
       // 如果没有保存的数据，初始化为空
       novels.value = []
-      // 保存空数据到localStorage
-      saveNovels()
+      // 保存空数据到IndexedDB
+      await saveNovels()
     }
   } catch (error) {
     console.error('加载小说数据失败:', error)
@@ -607,10 +610,42 @@ const loadNovels = () => {
   }
 }
 
-// 保存小说数据到localStorage
-const saveNovels = () => {
+// 保存小说数据到IndexedDB
+const saveNovels = async () => {
   try {
-    localStorage.setItem('novels', JSON.stringify(novels.value))
+    // 创建纯对象数组副本，避免Vue响应式代理问题
+    const novelsData = novels.value.map(novel => ({
+      id: novel.id,
+      title: novel.title,
+      author: novel.author,
+      genre: novel.genre,
+      status: novel.status,
+      description: novel.description,
+      cover: novel.cover,
+      tags: Array.isArray(novel.tags) ? [...novel.tags] : [],
+      wordCount: novel.wordCount || 0,
+      chapters: novel.chapters || 0,
+      createdAt: novel.createdAt,
+      updatedAt: novel.updatedAt,
+      chapterList: Array.isArray(novel.chapterList) ? novel.chapterList.map(chapter => ({
+        id: chapter.id,
+        title: chapter.title,
+        content: chapter.content,
+        description: chapter.description,
+        wordCount: chapter.wordCount || 0,
+        createdAt: chapter.createdAt,
+        updatedAt: chapter.updatedAt
+      })) : [],
+      writingRecords: Array.isArray(novel.writingRecords) ? novel.writingRecords.map(record => ({
+        id: record.id,
+        date: record.date,
+        wordsWritten: record.wordsWritten || 0,
+        timeSpent: record.timeSpent || 0,
+        note: record.note || ''
+      })) : []
+    }))
+    
+    await storageService.setItem('novels', novelsData)
   } catch (error) {
     console.error('保存小说数据失败:', error)
     ElMessage.error('保存数据失败')
@@ -719,18 +754,22 @@ const getGenreDisplayName = (genreCode) => {
 }
 
 // 加载类型数据
-const loadGenres = () => {
+const loadGenres = async () => {
   try {
-    const saved = localStorage.getItem('novelGenres')
+    const saved = await storageService.getItem('novelGenres')
     if (saved) {
-      const parsed = JSON.parse(saved)
+      // storageService已经返回解析后的对象，不需要再次JSON.parse
+      const parsed = Array.isArray(saved) ? saved : (typeof saved === 'string' ? JSON.parse(saved) : [])
+      
       // 转换为键值对格式，兼容旧版本
       const genresObj = {}
       parsed.forEach(genre => {
-        genresObj[genre.code] = {
-          name: genre.name,
-          tags: genre.tags,
-          prompt: genre.prompt
+        if (genre && genre.code) {
+          genresObj[genre.code] = {
+            name: genre.name || genre.code,
+            tags: Array.isArray(genre.tags) ? genre.tags : [],
+            prompt: genre.prompt || ''
+          }
         }
       })
       genrePresets.value = genresObj
@@ -782,15 +821,30 @@ const loadDefaultGenres = () => {
 }
 
 // 更新类型使用计数
-const updateGenreUsageCount = (genreCode) => {
+const updateGenreUsageCount = async (genreCode) => {
   try {
-    const saved = localStorage.getItem('novelGenres')
+    const saved = await storageService.getItem('novelGenres')
     if (saved) {
-      const genres = JSON.parse(saved)
+      // storageService已经返回解析后的对象，不需要再次JSON.parse
+      const genres = Array.isArray(saved) ? saved : (typeof saved === 'string' ? JSON.parse(saved) : [])
       const genreIndex = genres.findIndex(g => g.code === genreCode)
       if (genreIndex > -1) {
         genres[genreIndex].usageCount = (genres[genreIndex].usageCount || 0) + 1
-        localStorage.setItem('novelGenres', JSON.stringify(genres))
+        
+        // 创建纯对象数组副本用于存储
+        const genresData = genres.map(genre => ({
+          id: genre.id,
+          code: genre.code,
+          name: genre.name,
+          description: genre.description,
+          tags: Array.isArray(genre.tags) ? [...genre.tags] : [],
+          prompt: genre.prompt || '',
+          usageCount: genre.usageCount || 0,
+          createdAt: genre.createdAt,
+          updatedAt: genre.updatedAt
+        }))
+        
+        await storageService.setItem('novelGenres', genresData)
         console.log(`类型 ${genreCode} 使用计数更新为:`, genres[genreIndex].usageCount)
       }
     }
@@ -1088,7 +1142,7 @@ const exportAllNovels = () => {
   }
 }
 
-const duplicateNovel = (novel) => {
+const duplicateNovel = async (novel) => {
   const newNovel = {
     ...novel,
     id: Date.now(),
@@ -1097,8 +1151,8 @@ const duplicateNovel = (novel) => {
     updatedAt: new Date()
   }
   novels.value.push(newNovel)
-  // 保存到localStorage
-  saveNovels()
+  // 保存到IndexedDB
+  await saveNovels()
   ElMessage.success('小说复制成功')
 }
 
@@ -1111,8 +1165,8 @@ const deleteNovel = async (novel) => {
     const index = novels.value.findIndex(n => n.id === novel.id)
     if (index > -1) {
       novels.value.splice(index, 1)
-      // 保存到localStorage
-      saveNovels()
+      // 保存到IndexedDB
+      await saveNovels()
       ElMessage.success('删除成功')
     }
   } catch (error) {
@@ -1228,10 +1282,10 @@ const createNovel = async () => {
     novels.value.unshift(newNovel)
     
     // 更新类型使用计数
-    updateGenreUsageCount(createForm.value.genre)
+    await updateGenreUsageCount(createForm.value.genre)
     
-    // 保存到localStorage
-    saveNovels()
+    // 保存到IndexedDB
+    await saveNovels()
     
     ElMessage.success('小说创建成功！即将跳转到编辑区...')
     showCreateDialog.value = false
@@ -1438,11 +1492,11 @@ const updateNovelInfo = async () => {
       
       // 更新类型使用计数（如果类型发生变化）
       if (editingNovel.value.genre !== editForm.value.genre) {
-        updateGenreUsageCount(editForm.value.genre)
+        await updateGenreUsageCount(editForm.value.genre)
       }
       
-      // 保存到localStorage
-      saveNovels()
+      // 保存到IndexedDB
+      await saveNovels()
       
       ElMessage.success('小说信息更新成功')
       showEditDialog.value = false
@@ -1599,11 +1653,11 @@ const generateDescriptionFromTemplate = () => {
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
   // 加载小说数据
-  loadNovels()
+  await loadNovels()
   // 加载类型数据
-  loadGenres()
+  await loadGenres()
 })
 </script>
 

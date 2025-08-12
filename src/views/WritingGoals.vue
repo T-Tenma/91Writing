@@ -425,6 +425,7 @@ import {
   MoreFilled, Edit, VideoPause, Delete
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { storageService } from '@/services/storageService'
 
 // 响应式数据
 const goals = ref([])
@@ -457,38 +458,71 @@ const formRules = {
   dateRange: [{ required: true, message: '请选择时间范围', trigger: 'change' }]
 }
 
-// 从localStorage加载数据
-const loadGoals = () => {
-  const savedGoals = localStorage.getItem('writingGoals')
-  if (savedGoals) {
-    try {
-      const parsedGoals = JSON.parse(savedGoals)
-      goals.value = parsedGoals.map(goal => ({
-        ...goal,
-        startDate: new Date(goal.startDate),
-        endDate: new Date(goal.endDate),
-        progressHistory: goal.progressHistory || []
-      }))
-    } catch (error) {
-      console.error('加载写作目标数据失败:', error)
-      initializeDefaultGoals()
+// 从IndexedDB加载数据
+const loadGoals = async () => {
+  try {
+    const savedGoals = await storageService.getItem('writingGoals')
+    if (savedGoals) {
+      // 处理不同的数据格式 - storageService现在返回解析后的对象
+      let parsedGoals
+      if (typeof savedGoals === 'string') {
+        parsedGoals = JSON.parse(savedGoals)
+      } else if (Array.isArray(savedGoals)) {
+        parsedGoals = savedGoals
+      } else if (typeof savedGoals === 'object' && savedGoals !== null) {
+        parsedGoals = savedGoals
+      } else {
+        throw new Error('无效的数据格式')
+      }
+      
+      // 数据验证和转换
+      goals.value = parsedGoals
+        .filter(goal => goal && typeof goal === 'object') // 过滤无效数据
+        .map(goal => {
+          try {
+            return {
+              ...goal,
+              // 安全的日期转换
+              startDate: goal.startDate ? new Date(goal.startDate) : new Date(),
+              endDate: goal.endDate ? new Date(goal.endDate) : new Date(),
+              progressHistory: Array.isArray(goal.progressHistory) ? goal.progressHistory : [],
+              // 确保必要字段存在
+              id: goal.id || Date.now() + Math.random(),
+              title: goal.title || '未命名目标',
+              type: goal.type || 'daily',
+              targetValue: Number(goal.targetValue) || 1000,
+              currentValue: Number(goal.currentValue) || 0,
+              status: goal.status || 'active'
+            }
+          } catch (goalError) {
+            console.warn('处理目标数据时出错:', goalError, goal)
+            return null
+          }
+        })
+        .filter(goal => goal !== null) // 移除处理失败的目标
+        
+      console.log(`成功加载 ${goals.value.length} 个写作目标`)
+    } else {
+      await initializeDefaultGoals()
     }
-  } else {
-    initializeDefaultGoals()
+  } catch (error) {
+    console.error('加载写作目标数据失败:', error)
+    ElMessage.error('加载写作目标失败，将使用默认设置')
+    await initializeDefaultGoals()
   }
 }
 
 // 初始化默认目标数据
-const initializeDefaultGoals = () => {
+const initializeDefaultGoals = async () => {
   // 不设置任何默认目标，让用户自己创建
   goals.value = []
-  saveGoalsToStorage()
+  await saveGoalsToStorage()
 }
 
-// 保存数据到localStorage
-const saveGoalsToStorage = () => {
+// 保存数据到IndexedDB
+const saveGoalsToStorage = async () => {
   try {
-    localStorage.setItem('writingGoals', JSON.stringify(goals.value))
+    await storageService.setItem('writingGoals', JSON.stringify(goals.value))
     // 通知其他页面数据已更新
     if (window.refreshHomeData) {
       window.refreshHomeData()
@@ -640,9 +674,9 @@ const editGoal = (goal) => {
   showCreateDialog.value = true
 }
 
-const pauseGoal = (goal) => {
+const pauseGoal = async (goal) => {
   goal.status = 'paused'
-  saveGoalsToStorage()
+  await saveGoalsToStorage()
   ElMessage.success('目标已暂停')
 }
 
@@ -655,7 +689,7 @@ const deleteGoal = async (goal) => {
     const index = goals.value.findIndex(g => g.id === goal.id)
     if (index > -1) {
       goals.value.splice(index, 1)
-      saveGoalsToStorage()
+      await saveGoalsToStorage()
       ElMessage.success('删除成功')
     }
   } catch (error) {
@@ -705,7 +739,7 @@ const saveGoal = async () => {
       ElMessage.success('目标创建成功')
     }
     
-    saveGoalsToStorage()
+    await saveGoalsToStorage()
     showCreateDialog.value = false
     resetForm()
   } catch (error) {
@@ -713,7 +747,7 @@ const saveGoal = async () => {
   }
 }
 
-const saveProgress = () => {
+const saveProgress = async () => {
   if (progressIncrement.value > 0) {
     selectedGoal.value.currentValue += progressIncrement.value
     
@@ -733,7 +767,7 @@ const saveProgress = () => {
       ElMessage.success('进度更新成功')
     }
     
-    saveGoalsToStorage()
+    await saveGoalsToStorage()
   }
   
   showProgressDialog.value = false
@@ -753,8 +787,8 @@ const resetForm = () => {
 }
 
 // 生命周期
-onMounted(() => {
-  loadGoals()
+onMounted(async () => {
+  await loadGoals()
   
   // 监听localStorage变化
   window.addEventListener('storage', (e) => {

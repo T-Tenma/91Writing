@@ -278,6 +278,7 @@ import {
   CopyDocument, ArrowUp, ArrowDown, Delete 
 } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
+import { storageService } from '@/services/storageService'
 
 const router = useRouter()
 
@@ -323,11 +324,12 @@ const selectedNovel = computed(() => {
 })
 
 // 方法
-const loadNovels = () => {
+const loadNovels = async () => {
   try {
-    const saved = localStorage.getItem('novels')
+    const saved = await storageService.getItem('novels')
     if (saved) {
-      const parsedNovels = JSON.parse(saved)
+      // storageService现在返回解析后的对象，不需要再次JSON.parse
+      const parsedNovels = Array.isArray(saved) ? saved : (typeof saved === 'string' ? JSON.parse(saved) : [])
       novels.value = parsedNovels.map(novel => ({
         ...novel,
         createdAt: new Date(novel.createdAt),
@@ -388,11 +390,13 @@ const loadChapters = (novelId) => {
   }
 }
 
-const saveChaptersToNovel = () => {
+const saveChaptersToNovel = async () => {
   if (!selectedNovelId.value) return
   
   try {
-    const novels = JSON.parse(localStorage.getItem('novels') || '[]')
+    const novelsData = await storageService.getItem('novels')
+    // storageService现在返回解析后的对象，不需要再次JSON.parse
+    const novels = Array.isArray(novelsData) ? novelsData : (typeof novelsData === 'string' ? JSON.parse(novelsData) : [])
     const novelIndex = novels.findIndex(n => n.id === selectedNovelId.value)
     
     if (novelIndex > -1) {
@@ -405,7 +409,33 @@ const saveChaptersToNovel = () => {
       // 更新修改时间
       novels[novelIndex].updatedAt = new Date()
       
-      localStorage.setItem('novels', JSON.stringify(novels))
+      // 创建纯对象数组副本用于存储，避免Vue响应式代理问题
+      const novelsToStore = novels.map(novel => ({
+        id: novel.id,
+        title: novel.title,
+        author: novel.author,
+        genre: novel.genre,
+        status: novel.status,
+        description: novel.description,
+        cover: novel.cover,
+        tags: Array.isArray(novel.tags) ? [...novel.tags] : [],
+        wordCount: novel.wordCount || 0,
+        chapters: novel.chapters || 0,
+        createdAt: novel.createdAt,
+        updatedAt: novel.updatedAt,
+        chapterList: Array.isArray(novel.chapterList) ? novel.chapterList.map(chapter => ({
+          id: chapter.id,
+          title: chapter.title,
+          content: chapter.content,
+          description: chapter.description,
+          wordCount: chapter.wordCount || 0,
+          status: chapter.status,
+          createdAt: chapter.createdAt,
+          updatedAt: chapter.updatedAt
+        })) : []
+      }))
+      
+      await storageService.setItem('novels', novelsToStore)
       
       // 同步更新本地的novels数据
       loadNovels()
@@ -426,7 +456,7 @@ const viewChapter = (chapter) => {
   showPreviewDialog.value = true
 }
 
-const duplicateChapter = (chapter) => {
+const duplicateChapter = async (chapter) => {
   const newChapter = {
     ...chapter,
     id: Date.now(),
@@ -436,22 +466,22 @@ const duplicateChapter = (chapter) => {
     updatedAt: new Date()
   }
   chapters.value.push(newChapter)
-  // 保存到localStorage
-  saveChaptersToNovel()
+  // 保存到IndexedDB
+  await saveChaptersToNovel()
   ElMessage.success('章节复制成功')
 }
 
-const moveChapter = (chapter, direction) => {
+const moveChapter = async (chapter, direction) => {
   const index = chapters.value.findIndex(c => c.id === chapter.id)
   if (direction === 'up' && index > 0) {
     [chapters.value[index], chapters.value[index - 1]] = [chapters.value[index - 1], chapters.value[index]]
-    // 保存到localStorage
-    saveChaptersToNovel()
+    // 保存到IndexedDB
+    await saveChaptersToNovel()
     ElMessage.success('章节上移成功')
   } else if (direction === 'down' && index < chapters.value.length - 1) {
     [chapters.value[index], chapters.value[index + 1]] = [chapters.value[index + 1], chapters.value[index]]
-    // 保存到localStorage
-    saveChaptersToNovel()
+    // 保存到IndexedDB
+    await saveChaptersToNovel()
     ElMessage.success('章节下移成功')
   }
 }
@@ -465,19 +495,19 @@ const deleteChapter = (chapter) => {
       cancelButtonText: '取消',
       type: 'warning'
     }
-  ).then(() => {
+  ).then(async () => {
     const index = chapters.value.findIndex(c => c.id === chapter.id)
     if (index > -1) {
       chapters.value.splice(index, 1)
-      // 保存到localStorage
-      saveChaptersToNovel()
+      // 保存到IndexedDB
+      await saveChaptersToNovel()
       ElMessage.success('章节删除成功')
     }
   })
 }
 
 const saveChapter = () => {
-  chapterFormRef.value.validate((valid) => {
+  chapterFormRef.value.validate(async (valid) => {
     if (valid) {
       const wordCount = chapterForm.value.content.replace(/<[^>]*>/g, '').length
       
@@ -508,8 +538,8 @@ const saveChapter = () => {
         ElMessage.success('章节创建成功')
       }
       
-      // 保存到localStorage
-      saveChaptersToNovel()
+      // 保存到IndexedDB
+      await saveChaptersToNovel()
       
       showCreateDialog.value = false
       resetForm()
@@ -569,8 +599,8 @@ watch(showCreateDialog, (newVal) => {
 })
 
 // 生命周期
-onMounted(() => {
-  loadNovels()
+onMounted(async () => {
+  await loadNovels()
 })
 </script>
 

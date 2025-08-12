@@ -288,6 +288,8 @@
 import { ref, computed, reactive } from 'vue'
 import { useNovelStore } from '@/stores/novel'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { storageService } from '@/services/storageService'
+import { computedAsync } from '@vueuse/core'
 
 const novelStore = useNovelStore()
 
@@ -335,14 +337,13 @@ const templateRules = {
 }
 
 // 计算属性
-const templates = computed(() => {
-  // 合并系统模板和自定义模板
+const templates = computedAsync(async () => {
   const systemTemplates = novelStore.templates.map(t => ({ ...t, isSystem: true }))
-  const customTemplates = JSON.parse(localStorage.getItem('customTemplates') || '[]')
-    .map(t => ({ ...t, isSystem: false }))
-  
+  const customTemplatesData = await storageService.getItem('customTemplates') || []
+  const customTemplates = customTemplatesData.map(t => ({ ...t, isSystem: false }))
   return [...systemTemplates, ...customTemplates]
-})
+}, [])
+
 
 const filteredTemplates = computed(() => {
   if (!searchKeyword.value.trim()) {
@@ -359,7 +360,7 @@ const addTemplate = async () => {
   try {
     await templateFormRef.value.validate()
     
-    const customTemplates = JSON.parse(localStorage.getItem('customTemplates') || '[]')
+    const customTemplates = (await storageService.getItem('customTemplates')) || []
     const newId = Date.now()
     
     const template = {
@@ -374,7 +375,7 @@ const addTemplate = async () => {
     }
     
     customTemplates.push(template)
-    localStorage.setItem('customTemplates', JSON.stringify(customTemplates))
+    await storageService.setItem('customTemplates', customTemplates)
     
     ElMessage.success('模板创建成功')
     resetForm()
@@ -430,7 +431,7 @@ const saveEdit = async () => {
   try {
     await editFormRef.value.validate()
     
-    const customTemplates = JSON.parse(localStorage.getItem('customTemplates') || '[]')
+    const customTemplates = (await storageService.getItem('customTemplates')) || []
     const index = customTemplates.findIndex(t => t.id === editingTemplate.id)
     
     if (index > -1) {
@@ -445,7 +446,7 @@ const saveEdit = async () => {
         updatedAt: new Date().toISOString()
       }
       
-      localStorage.setItem('customTemplates', JSON.stringify(customTemplates))
+      await storageService.setItem('customTemplates', customTemplates)
       ElMessage.success('模板更新成功')
       showEditDialog.value = false
     }
@@ -466,9 +467,9 @@ const deleteTemplate = async (id) => {
       }
     )
     
-    const customTemplates = JSON.parse(localStorage.getItem('customTemplates') || '[]')
+    const customTemplates = (await storageService.getItem('customTemplates')) || []
     const filteredTemplates = customTemplates.filter(t => t.id !== id)
-    localStorage.setItem('customTemplates', JSON.stringify(filteredTemplates))
+    await storageService.setItem('customTemplates', filteredTemplates)
     
     ElMessage.success('删除成功')
   } catch {
