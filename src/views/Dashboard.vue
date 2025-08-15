@@ -540,14 +540,13 @@ watch(() => [isApiConfigured.value, currentApiConfig.value], async () => {
   await initializeModelSelector()
 }, { immediate: true })
 
-// 监听localStorage变化的函数
-const handleStorageChange = (event) => {
-  if (event.key === 'apiConfigType' || event.key === 'officialApiConfig' || event.key === 'customApiConfig' || event.key === 'customModels') {
-    console.log('检测到localStorage配置变化:', event.key, event.newValue) // 调试日志
-    // 延迟执行，确保数据已更新
-    setTimeout(async () => {
-      await initializeModelSelector()
-    }, 100)
+// 监听IndexedDB配置变化的函数
+const handleConfigChange = async () => {
+  // 检查配置是否发生变化
+  const currentType = await storageService.getItem('apiConfigType')
+  if (currentType !== configType.value) {
+    console.log('检测到配置类型变化:', configType.value, '->', currentType)
+    await initializeModelSelector()
   }
 }
 
@@ -555,20 +554,19 @@ const handleStorageChange = (event) => {
 onMounted(async () => {
   await loadCustomModels()
   await initializeModelSelector()
-  // 监听localStorage变化
-  window.addEventListener('storage', handleStorageChange)
   
-  // 手动触发一次检查（处理同页面内的变化）
-  const checkConfigChange = async () => {
-    const currentType = await storageService.getItem('apiConfigType')
-    if (currentType !== configType.value) {
-      console.log('检测到配置类型变化:', configType.value, '->', currentType)
-      await initializeModelSelector()
+  // 监听IndexedDB配置变化，通过自定义事件实现
+  window.addEventListener('indexedDBUpdate', (e) => {
+    if (e.detail && ['apiConfigType', 'officialApiConfig', 'customApiConfig', 'customModels'].includes(e.detail.key)) {
+      console.log('检测到IndexedDB配置变化:', e.detail.key)
+      setTimeout(async () => {
+        await initializeModelSelector()
+      }, 100)
     }
-  }
+  })
   
-  // 定期检查配置变化（处理同页面内的localStorage变化）
-  const intervalId = setInterval(checkConfigChange, 1000)
+  // 定期检查配置变化（处理响应式状态变化）
+  const intervalId = setInterval(handleConfigChange, 2000)
   
   // 保存interval ID以便清理
   window.modelSelectorInterval = intervalId
@@ -576,7 +574,7 @@ onMounted(async () => {
 
 // 组件卸载时清理
 onUnmounted(() => {
-  window.removeEventListener('storage', handleStorageChange)
+  window.removeEventListener('indexedDBUpdate', handleConfigChange)
   if (window.modelSelectorInterval) {
     clearInterval(window.modelSelectorInterval)
     delete window.modelSelectorInterval

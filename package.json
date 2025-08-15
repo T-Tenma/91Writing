@@ -1,40 +1,41 @@
 {
-  "name": "ai-novel-generator",
-  "version": "0.7.0",
-  "description": "AI小说写作工具",
+  "name": "91writing",
+  "private": true,
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore"
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest --watch",
+    "test:storage": "vitest run src/services/__tests__/storageService.test.js",
+    "test:novel": "vitest run src/services/__tests__/novelStorage.test.js",
+    "test:db": "vitest run src/services/__tests__/db.test.js"
   },
   "dependencies": {
-    "@element-plus/icons-vue": "^2.1.0",
-    "@vueuse/core": "^10.5.0",
+    "@element-plus/icons-vue": "^2.3.1",
     "@wangeditor/editor": "^5.1.23",
     "@wangeditor/editor-for-vue": "^5.1.12",
-    "axios": "^1.6.0",
-    "dexie": "^4.0.11",
-    "element-plus": "^2.4.2",
+    "dexie": "^4.0.8",
+    "element-plus": "^2.7.6",
     "file-saver": "^2.0.5",
-    "highlight.js": "^11.9.0",
-    "marked": "^9.1.6",
+    "marked": "^16.1.2",
     "pinia": "^2.1.7",
-    "vue": "^3.3.8",
-    "vue-router": "^4.2.5"
+    "vue": "^3.4.29",
+    "vue-router": "^4.3.3"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^4.4.1",
-    "@vue/eslint-config-prettier": "^8.0.0",
-    "@vue/test-utils": "^2.4.6",
-    "eslint": "^8.53.0",
-    "eslint-plugin-vue": "^9.18.1",
-    "jsdom": "^26.1.0",
-    "prettier": "^3.1.0",
-    "unplugin-auto-import": "^0.16.7",
-    "unplugin-vue-components": "^0.25.2",
-    "vite": "^4.5.0",
-    "vitest": "^3.2.4"
+    "@vitejs/plugin-vue": "^5.0.5",
+    "@vitest/coverage-v8": "^2.0.0",
+    "@vitest/ui": "^2.0.0",
+    "jsdom": "^24.1.0",
+    "unplugin-auto-import": "^0.17.6",
+    "unplugin-vue-components": "^0.27.2",
+    "vite": "^5.3.1",
+    "vitest": "^2.0.0"
   }
 }

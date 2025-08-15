@@ -2,16 +2,19 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import apiService from '../services/api.js'
 import { storageService } from '../services/storageService'
+import { novelStorageService } from '../services/novelStorage'
 
 export const useNovelStore = defineStore('novel', () => {
   // 状态
   const currentNovel = ref('')
+  const currentNovelId = ref(null)
   const generatedContent = ref('')
   const outline = ref('')
   const isGeneratingOutline = ref(false)
   const chapters = ref([])
   const selectedChapter = ref(null)
   const isGeneratingChapter = ref(false)
+  const isSaving = ref(false)
   const aiChatHistory = ref([])
   const currentChatInput = ref('')
   const isAiChatting = ref(false)
@@ -145,10 +148,19 @@ export const useNovelStore = defineStore('novel', () => {
     selectedChapter.value = chapter
   }
 
-  const updateChapterContent = (chapterId, content) => {
+  const updateChapterContent = async (chapterId, content, autoSave = true) => {
     const chapter = chapters.value.find(c => c.id === chapterId)
     if (chapter) {
       chapter.content = content
+      
+      // 自动保存功能
+      if (autoSave && currentNovelId.value) {
+        try {
+          await novelStorageService.autoSave(currentNovelId.value, chapterId, content)
+        } catch (error) {
+          console.error('自动保存失败:', error)
+        }
+      }
     }
   }
 
@@ -695,15 +707,81 @@ export const useNovelStore = defineStore('novel', () => {
     }
   }
 
+  // 保存小说数据
+  const saveNovel = async (novelData) => {
+    if (!currentNovelId.value) {
+      throw new Error('未选择小说')
+    }
+    
+    try {
+      isSaving.value = true
+      await novelStorageService.saveNovel(currentNovelId.value, {
+        ...novelData,
+        chapters: chapters.value,
+        characters: characters.value,
+        worldSettings: worldSettings.value
+      })
+      return true
+    } catch (error) {
+      console.error('保存小说失败:', error)
+      throw error
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  // 保存章节内容
+  const saveChapter = async (chapterId, chapterData) => {
+    if (!currentNovelId.value) {
+      throw new Error('未选择小说')
+    }
+    
+    try {
+      isSaving.value = true
+      await novelStorageService.saveChapter(currentNovelId.value, chapterId, chapterData)
+      return true
+    } catch (error) {
+      console.error('保存章节失败:', error)
+      throw error
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  // 加载小说数据
+  const loadNovel = async (novelId) => {
+    try {
+      const novelData = await novelStorageService.getNovel(novelId)
+      if (novelData) {
+        currentNovelId.value = novelId
+        chapters.value = novelData.chapters || []
+        characters.value = novelData.characters || []
+        worldSettings.value = novelData.worldSettings || []
+        return novelData
+      }
+      return null
+    } catch (error) {
+      console.error('加载小说失败:', error)
+      throw error
+    }
+  }
+
+  // 设置当前小说ID
+  const setCurrentNovelId = (novelId) => {
+    currentNovelId.value = novelId
+  }
+
   return {
     // 状态
     currentNovel,
+    currentNovelId,
     generatedContent,
     outline,
     isGeneratingOutline,
     chapters,
     selectedChapter,
     isGeneratingChapter,
+    isSaving,
     aiChatHistory,
     currentChatInput,
     isAiChatting,
@@ -730,6 +808,7 @@ export const useNovelStore = defineStore('novel', () => {
     
     // 方法
     setCurrentNovel,
+    setCurrentNovelId,
     setGeneratedContent,
     addToNovel,
     clearNovel,
@@ -756,6 +835,11 @@ export const useNovelStore = defineStore('novel', () => {
     removeWorldSetting,
     updateWorldSetting,
     updateStats,
+    
+    // 保存相关方法
+    saveNovel,
+    saveChapter,
+    loadNovel,
     
     // API相关方法
     updateApiConfig,
