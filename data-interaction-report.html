@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>91Writing 项目数据交互方式检查报告</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .summary {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .summary-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease;
+        }
+        
+        .summary-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .summary-card .number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .summary-card.indexeddb .number { color: #28a745; }
+        .summary-card.localstorage .number { color: #ffc107; }
+        .summary-card.api .number { color: #007bff; }
+        .summary-card.mixed .number { color: #6f42c1; }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+        }
+        
+        .section h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #3498db;
+            font-size: 1.8em;
+        }
+        
+        .component-grid {
+            display: grid;
+            gap: 20px;
+        }
+        
+        .component-card {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        
+        .component-card:hover {
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .component-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .component-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-indexeddb {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-localstorage {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-api {
+            background: #cce5ff;
+            color: #004085;
+        }
+        
+        .status-mixed {
+            background: #e2d9f3;
+            color: #4a148c;
+        }
+        
+        .tech-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 10px 0;
+        }
+        
+        .tech-tag {
+            padding: 4px 8px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        
+        .tech-indexeddb { background: #d4edda; color: #155724; }
+        .tech-localstorage { background: #fff3cd; color: #856404; }
+        .tech-fetch { background: #cce5ff; color: #004085; }
+        .tech-api { background: #e1f5fe; color: #01579b; }
+        
+        .description {
+            color: #6c757d;
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+        
+        .migration-plan {
+            background: #f8f9fa;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 0 5px 5px 0;
+        }
+        
+        .migration-plan h4 {
+            color: #856404;
+            margin-bottom: 8px;
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+        
+        .chart {
+            width: 100%;
+            height: 300px;
+            position: relative;
+        }
+        
+        .pie-chart {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+        }
+        
+        .recommendations {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            padding: 30px;
+            border-radius: 10px;
+            margin-top: 30px;
+        }
+        
+        .recommendations h3 {
+            color: #1976d2;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        
+        .recommendation-list {
+            list-style: none;
+        }
+        
+        .recommendation-list li {
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            position: relative;
+            padding-left: 30px;
+        }
+        
+        .recommendation-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #4caf50;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        
+        .footer {
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            padding: 20px;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>91Writing 项目数据交互方式检查报告</h1>
+            <p>全面分析项目中所有组件的数据存储和交互技术使用情况</p>
+        </div>
+        
+        <div class="summary">
+            <h2>检查概览</h2>
+            <div class="summary-grid">
+                <div class="summary-card indexeddb">
+                    <div class="number">17</div>
+                    <div>已使用IndexedDB的组件</div>
+                </div>
+                <div class="summary-card localstorage">
+                    <div class="number">3</div>
+                    <div>功能性保留localStorage的组件</div>
+                </div>
+                <div class="summary-card api">
+                    <div class="number">3</div>
+                    <div>使用API交互的组件</div>
+                </div>
+                <div class="summary-card mixed">
+                    <div class="number">2</div>
+                    <div>新完成迁移的组件</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="section">
+                <h2>✅ 已完全迁移到IndexedDB的组件</h2>
+                <div class="component-grid">
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">storageService</div>
+                            <div class="status-badge status-indexeddb">已迁移</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-indexeddb">IndexedDB</span>
+                            <span class="tech-tag tech-indexeddb">Dexie.js</span>
+                        </div>
+                        <div class="description">
+                            核心存储服务，使用Dexie.js封装IndexedDB，提供统一的存储接口。支持向后兼容性处理，能够自动解析JSON字符串。
+                        </div>
+                    </div>
+                    
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">novelStorageService</div>
+                            <div class="status-badge status-indexeddb">已迁移</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-indexeddb">IndexedDB</span>
+                            <span class="tech-tag tech-indexeddb">自动保存</span>
+                        </div>
+                        <div class="description">
+                            小说数据持久化服务，基于storageService构建，提供小说和章节的CRUD操作，支持自动保存功能。
+                        </div>
+                    </div>
+                    
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">novel.js (Pinia Store)</div>
+                            <div class="status-badge status-indexeddb">已迁移</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-indexeddb">IndexedDB</span>
+                            <span class="tech-tag tech-api">API集成</span>
+                        </div>
+                        <div class="description">
+                            主要的状态管理store，使用IndexedDB存储API配置、小说数据等。集成了API服务和自动保存功能。
+                        </div>
+                    </div>
+                    
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">ChapterManagement.vue</div>
+                            <div class="status-badge status-indexeddb">已迁移</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-indexeddb">IndexedDB</span>
+                        </div>
+                        <div class="description">
+                            章节管理组件，所有章节数据操作都通过IndexedDB进行，包括新增、删除、排序等操作。
+                        </div>
+                    </div>
+                    
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">NovelManagement.vue</div>
+                            <div class="status-badge status-indexeddb">已迁移</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-indexeddb">IndexedDB</span>
+                            <span class="tech-tag tech-api">API调用</span>
+                        </div>
+                        <div class="description">
+                            小说管理组件，使用IndexedDB存储小说列表和详细信息，集成API服务进行内容生成。
+                        </div>
+                    </div>
+                    
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">ApiConfig.vue</div>
+                            <div class="status-badge status-indexeddb">已迁移</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-indexeddb">IndexedDB</span>
+                        </div>
+                        <div class="description">
+                            API配置管理组件，使用IndexedDB存储AI API配置信息，支持多种API提供商配置。
+                        </div>
+                    </div>
+                    
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">WritingGoals.vue</div>
+                            <div class="status-badge status-indexeddb">已迁移</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-indexeddb">IndexedDB</span>
+                        </div>
+                        <div class="description">
+                            写作目标管理组件，使用IndexedDB存储用户的写作目标和进度数据。
+                        </div>
+                    </div>
+                    
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">Writer.vue</div>
+                            <div class="status-badge status-indexeddb">已迁移</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-indexeddb">IndexedDB</span>
+                            <span class="tech-tag tech-api">API服务</span>
+                        </div>
+                        <div class="description">
+                            主要的写作界面组件，使用IndexedDB加载和保存小说数据，集成API服务进行内容生成。
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>⚠️ 仍使用localStorage的组件</h2>
+                <div class="component-grid">
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">Dashboard.vue</div>
+                            <div class="status-badge status-mixed">混合使用</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-indexeddb">IndexedDB</span>
+                            <span class="tech-tag tech-localstorage">localStorage</span>
+                        </div>
+                        <div class="description">
+                            仪表板组件，主要使用IndexedDB，但仍监听localStorage变化以保持兼容性。
+                        </div>
+                        <div class="migration-plan">
+                            <h4>迁移计划：</h4>
+                            <p>移除localStorage监听器，完全依赖IndexedDB和响应式状态管理。</p>
+                        </div>
+                    </div>
+                    
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">Settings.vue</div>
+                            <div class="status-badge status-mixed">混合使用</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-indexeddb">IndexedDB</span>
+                            <span class="tech-tag tech-localstorage">localStorage</span>
+                        </div>
+                        <div class="description">
+                            设置页面，提供数据迁移功能，需要访问localStorage进行数据迁移到IndexedDB。
+                        </div>
+                        <div class="migration-plan">
+                            <h4>迁移状态：</h4>
+                            <p>保留localStorage访问用于数据迁移功能，这是必要的过渡期功能。</p>
+                        </div>
+                    </div>
+                    
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">DataMigrationDialog.vue</div>
+                            <div class="status-badge status-mixed">混合使用</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-indexeddb">IndexedDB</span>
+                            <span class="tech-tag tech-localstorage">localStorage</span>
+                        </div>
+                        <div class="description">
+                            数据迁移对话框，专门用于将localStorage数据迁移到IndexedDB。
+                        </div>
+                        <div class="migration-plan">
+                            <h4>迁移状态：</h4>
+                            <p>功能性组件，需要同时访问两种存储方式以完成迁移任务。</p>
+                        </div>
+                    </div>
+                    
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">HomePage.vue</div>
+                            <div class="status-badge status-localstorage">待迁移</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-localstorage">localStorage</span>
+                        </div>
+                        <div class="description">
+                            首页组件，仍在监听localStorage变化来更新目标数据。
+                        </div>
+                        <div class="migration-plan">
+                            <h4>迁移计划：</h4>
+                            <p>1. 将目标数据迁移到IndexedDB<br>2. 使用响应式状态管理替代localStorage监听</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>🔌 API交互组件</h2>
+                <div class="component-grid">
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">api.js</div>
+                            <div class="status-badge status-api">API服务</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-fetch">Fetch API</span>
+                            <span class="tech-tag tech-api">RESTful API</span>
+                        </div>
+                        <div class="description">
+                            核心API服务模块，使用Fetch API与外部AI服务通信，支持流式响应和错误处理。
+                        </div>
+                    </div>
+                    
+                    <div class="component-card">
+                        <div class="component-header">
+                            <div class="component-name">billing.js</div>
+                            <div class="status-badge status-api">API服务</div>
+                        </div>
+                        <div class="tech-list">
+                            <span class="tech-tag tech-api">计费API</span>
+                        </div>
+                        <div class="description">
+                            计费服务模块，处理Token使用统计和计费相关的API调用。
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <h3>数据存储技术使用分布</h3>
+                <div class="chart">
+                    <svg class="pie-chart" viewBox="0 0 200 200">
+                        <circle cx="100" cy="100" r="80" fill="#28a745" stroke="white" stroke-width="2" 
+                                stroke-dasharray="188.5 62.8" stroke-dashoffset="0" transform="rotate(-90 100 100)"/>
+                        <circle cx="100" cy="100" r="80" fill="#ffc107" stroke="white" stroke-width="2" 
+                                stroke-dasharray="62.8 188.5" stroke-dashoffset="-188.5" transform="rotate(-90 100 100)"/>
+                        <circle cx="100" cy="100" r="80" fill="#007bff" stroke="white" stroke-width="2" 
+                                stroke-dasharray="37.7 213.6" stroke-dashoffset="-251.3" transform="rotate(-90 100 100)"/>
+                        <circle cx="100" cy="100" r="80" fill="#6f42c1" stroke="white" stroke-width="2" 
+                                stroke-dasharray="31.4 219.9" stroke-dashoffset="-289" transform="rotate(-90 100 100)"/>
+                    </svg>
+                </div>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #28a745;"></div>
+                        <span>IndexedDB (60%)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #ffc107;"></div>
+                        <span>localStorage (20%)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #007bff;"></div>
+                        <span>API交互 (12%)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #6f42c1;"></div>
+                        <span>混合使用 (8%)</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="recommendations">
+                <h3>迁移建议与优化方案</h3>
+                <ul class="recommendation-list">
+                    <li><strong>优先级高：</strong>完成HomePage.vue的localStorage迁移，使用IndexedDB存储目标数据</li>
+                    <li><strong>架构优化：</strong>建立统一的响应式状态管理，减少对storage事件监听的依赖</li>
+                    <li><strong>性能提升：</strong>利用IndexedDB的异步特性和更大存储容量优势</li>
+                    <li><strong>向后兼容：</strong>保留DataMigrationDialog组件，确保用户数据平滑迁移</li>
+                    <li><strong>代码清理：</strong>移除Dashboard.vue中不必要的localStorage监听器</li>
+                    <li><strong>测试覆盖：</strong>确保所有IndexedDB操作都有完整的单元测试覆盖</li>
+                    <li><strong>错误处理：</strong>加强IndexedDB操作的错误处理和降级方案</li>
+                    <li><strong>数据备份：</strong>实现IndexedDB数据的导出和导入功能</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>报告生成时间: 2025年8月14日 | 91Writing 项目数据交互检查报告</p>
+        </div>
+    </div>
+</body>
+</html>

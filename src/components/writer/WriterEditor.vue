@@ -109,7 +109,8 @@ const emit = defineEmits([
   'enhance-content',
   'add-new-chapter',
   'editor-created',
-  'content-change'
+  'content-change',
+  'auto-save'
 ])
 
 // 编辑器实例，必须用 shallowRef
@@ -132,6 +133,11 @@ const handleChange = (editor) => {
   const html = editor.getHtml()
   emit('update:content', html)
   emit('content-change', html, editor)
+  
+  // 触发自动保存
+  if (props.currentChapter && props.currentChapter.id) {
+    emit('auto-save', props.currentChapter.id, html)
+  }
 }
 
 // 组件销毁时，也及时销毁编辑器

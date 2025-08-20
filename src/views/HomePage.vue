@@ -469,9 +469,9 @@ const loadData = async () => {
 onMounted(async () => {
   await loadData()
   
-  // 监听localStorage变化，以便实时更新目标数据
-  window.addEventListener('storage', (e) => {
-    if (e.key === 'writingGoals' || e.key === 'novels') {
+  // 监听IndexedDB数据变化，通过自定义事件实现
+  window.addEventListener('indexedDBUpdate', (e) => {
+    if (e.detail && (e.detail.key === 'writingGoals' || e.detail.key === 'novels')) {
       debouncedRefresh()
     }
   })
@@ -488,7 +488,7 @@ onMounted(async () => {
     if (refreshTimeout) {
       clearTimeout(refreshTimeout)
     }
-    window.removeEventListener('storage', debouncedRefresh)
+    window.removeEventListener('indexedDBUpdate', debouncedRefresh)
     document.removeEventListener('visibilitychange', debouncedRefresh)
   }
   

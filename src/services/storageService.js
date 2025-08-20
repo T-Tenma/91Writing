@@ -54,6 +54,13 @@ export const storageService = {
     
     // The 'put' method will add or replace an item based on the primary key.
     await db.key_value_store.put({ key, value: processedValue });
+    
+    // 触发自定义事件通知其他组件数据已更新
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('indexedDBUpdate', {
+        detail: { key, value: processedValue }
+      }));
+    }
   },
 
   /**
@@ -63,6 +70,13 @@ export const storageService = {
    */
   async removeItem(key) {
     await db.key_value_store.delete(key);
+    
+    // 触发自定义事件通知其他组件数据已删除
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('indexedDBUpdate', {
+        detail: { key, action: 'remove' }
+      }));
+    }
   },
 
   /**
@@ -71,5 +85,12 @@ export const storageService = {
    */
   async clear() {
     await db.key_value_store.clear();
+    
+    // 触发自定义事件通知其他组件数据已清空
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('indexedDBUpdate', {
+        detail: { action: 'clear' }
+      }));
+    }
   }
 };
