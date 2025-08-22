@@ -2134,6 +2134,7 @@ import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import apiService from '../services/api.js'
 import billingService from '../services/billing.js'
+import { useAutoSave } from '@/composables/useAutoSave'
 import { useNovelStore } from '../stores/novel.js'
 import { storageService } from '@/services/storageService'
 
@@ -2464,12 +2465,34 @@ const loadChapter = (chapter) => {
   content.value = chapter.content || ''
 }
 
+// 手动保存当前章节
 const saveCurrentChapter = async () => {
-  if (currentChapter.value) {
+  if (!currentChapter.value || !currentNovel.value) {
+    console.warn('缺少章节或小说信息，无法保存')
+    return
+  }
+
+  try {
+    await manualSave(
+      currentChapter.value.id,
+      currentNovel.value.id,
+      content.value,
+      {
+        title: currentChapter.value.title,
+        status: currentChapter.value.status || 'draft'
+      }
+    )
+    
+    // 更新本地章节数据
     currentChapter.value.content = content.value
     currentChapter.value.wordCount = contentWordCount.value
     currentChapter.value.updatedAt = new Date()
+    
+    // 同步保存小说数据
     await saveNovelData()
+  } catch (error) {
+    console.error('手动保存章节失败:', error)
+    throw error
   }
 }
 
@@ -7582,31 +7605,46 @@ const saveCorpus = () => {
   saveNovelData()
 }
 
-// 自动保存防抖定时器
-let autoSaveTimer = null
+// 使用新的自动保存系统
+import { useAutoSave } from '@/composables/useAutoSave'
 
+// 初始化自动保存
+const {
+  isSaving: autoSaveIsSaving,
+  hasUnsavedChanges,
+  triggerAutoSave,
+  manualSave,
+  forceServeAll,
+  getSaveStatus,
+  setUnsavedChanges
+} = useAutoSave({
+  debounceTime: 2000,
+  showUserNotifications: false,
+  enableForceServe: true,
+  validateBeforeSave: true
+})
+
+// 合并保存状态
+const isSaving = computed(() => autoSaveIsSaving.value)
+
+// 内容变化处理
 const onContentChange = () => {
-  // 清除之前的定时器
-  if (autoSaveTimer) {
-    clearTimeout(autoSaveTimer)
-  }
-  
-  // 设置新的定时器，2秒后自动保存
-  autoSaveTimer = setTimeout(() => {
-    autoSave()
-  }, 2000)
-}
-
-// 自动保存函数
-const autoSave = () => {
-  if (currentChapter.value) {
-    isSaving.value = true
+  if (currentChapter.value && currentNovel.value) {
+    // 标记有未保存更改
+    setUnsavedChanges(true)
     
-    setTimeout(() => {
-      saveCurrentChapter()
-      isSaving.value = false
-      // 不显示保存成功消息，避免打扰用户
-    }, 300) // 短暂延迟以显示保存状态
+    // 触发自动保存
+    triggerAutoSave(
+      currentChapter.value.id,
+      currentNovel.value.id,
+      content.value,
+      {
+        title: currentChapter.value.title,
+        status: currentChapter.value.status || 'draft'
+      }
+    ).catch(error => {
+      console.error('自动保存触发失败:', error)
+    })
   }
 }
 
@@ -7711,13 +7749,18 @@ onMounted(async () => {
   await loadPrompts()
 })
 
-onUnmounted(() => {
-  // 页面卸载时自动保存
-  if (autoSaveTimer) {
-    clearTimeout(autoSaveTimer)
+onUnmounted(async () => {
+  // 页面卸载时强制保存所有挂起的内容
+  try {
+    if (hasUnsavedChanges.value) {
+      console.log('页面卸载，执行强制保存')
+      await forceServeAll()
+    }
+  } catch (error) {
+    console.error('页面卸载时保存失败:', error)
   }
-  saveCurrentChapter()
   
+  // 清理编辑器
   if (editorRef.value) {
     editorRef.value.destroy()
   }
