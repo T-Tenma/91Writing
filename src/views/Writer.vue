@@ -2177,7 +2177,6 @@ const chapters = ref([])
 const currentChapter = ref(null)
 const content = ref('')
 const hasUnsavedChanges = ref(false)
-const isSaving = ref(false)
 const showChapterDialog = ref(false)
 const editingChapter = ref(null)
 const editorRef = shallowRef()
@@ -7605,13 +7604,10 @@ const saveCorpus = () => {
   saveNovelData()
 }
 
-// 使用新的自动保存系统
-import { useAutoSave } from '@/composables/useAutoSave'
-
 // 初始化自动保存
 const {
   isSaving: autoSaveIsSaving,
-  hasUnsavedChanges,
+  hasUnsavedChanges: autoSaveHasUnsavedChanges,
   triggerAutoSave,
   manualSave,
   forceServeAll,
@@ -7752,7 +7748,7 @@ onMounted(async () => {
 onUnmounted(async () => {
   // 页面卸载时强制保存所有挂起的内容
   try {
-    if (hasUnsavedChanges.value) {
+    if (autoSaveHasUnsavedChanges.value) {
       console.log('页面卸载，执行强制保存')
       await forceServeAll()
     }
