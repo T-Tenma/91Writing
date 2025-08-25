@@ -134,10 +134,8 @@ const handleChange = (editor) => {
   emit('update:content', html)
   emit('content-change', html, editor)
   
-  // 触发自动保存
-  if (props.currentChapter && props.currentChapter.id) {
-    emit('auto-save', props.currentChapter.id, html)
-  }
+  // 只触发内容变化事件，由父组件统一处理自动保存
+  // 避免重复的自动保存触发
 }
 
 // 组件销毁时，也及时销毁编辑器
